@@ -1,0 +1,26 @@
+{
+  "name": "@workflowy/cli",
+  "version": "0.1.0",
+  "description": "WorkFlowy CLI — command-line interface for agents, automations, and power users",
+  "module": "cli/wf.ts",
+  "type": "module",
+  "bin": {
+    "wf": "cli/wf.ts"
+  },
+  "scripts": {
+    "dev": "bun run cli/wf.ts",
+    "build": "bun build cli/wf.ts --compile --outfile dist/wf",
+    "typecheck": "tsc --noEmit"
+  },
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "chalk": "5",
+    "commander": "^14.0.3"
+  }
+}
