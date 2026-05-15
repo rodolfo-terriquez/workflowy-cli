@@ -1,4 +1,4 @@
-# wf — WorkFlowy CLI
+# wf — Workflowy CLI
 
 ```
   ╦ ╦╔═╗╦═╗╦╔═╔═╗╦  ╔═╗╦ ╦╦ ╦
@@ -6,9 +6,9 @@
   ╚╩╝╚═╝╩╚═╩ ╩╚  ╩═╝╚═╝╚╩╝ ╩
 ```
 
-Command-line interface for [WorkFlowy](https://workflowy.com) — built for agents, automations, and power users.
+Command-line interface for [Workflowy](https://Workflowy.com) — built for agents, automations, and power users.
 
-Reads are instant (~60ms from local cache), searches are unlimited (local FTS, no rate limits), and writes go through a safe propose/apply flow powered by an LLM. Designed so coding agents can manage a WorkFlowy outline without burning tokens on round-trips.
+Reads are instant (~60ms from local cache), searches are unlimited (local FTS, no rate limits), and writes go through a safe propose/apply flow powered by an LLM. Designed so coding agents can manage a Workflowy outline without burning tokens on round-trips.
 
 ## Install
 
@@ -24,7 +24,7 @@ bun run cli/wf.ts
 ## Quick Start
 
 ```bash
-# 1. Authenticate with your WorkFlowy API key
+# 1. Authenticate with your Workflowy API key
 wf login
 
 # 2. Sync your outline to local cache
@@ -36,7 +36,7 @@ wf read @inbox
 
 ## How It Works
 
-The CLI talks to two WorkFlowy APIs:
+The CLI talks to two Workflowy APIs:
 
 - **Standard API** (`workflowy.com/api/v1/`) — used for full-tree export, target discovery, and sync
 - **LLM Doc API** (`beta.workflowy.com/api/llm/doc/`) — used for efficient reads and all write operations
@@ -45,17 +45,17 @@ On first run, `wf sync` pulls your entire outline into a local SQLite database w
 
 ```
 ┌─────────────┐       ┌──────────────────┐       ┌──────────────┐
-│  wf read    │──────▶│  Local SQLite    │       │  WorkFlowy   │
+│  wf read    │──────▶│  Local SQLite    │       │  Workflowy   │
 │  wf search  │       │  (~60ms)         │       │  API         │
 │  wf find    │       └──────────────────┘       │              │
-│  wf context │                                   │              │
+│  wf context │                                  │              │
 ├─────────────┤       ┌──────────────────┐       │              │
-│  wf capture │──────▶│  LLM Doc API    │──────▶│              │
+│  wf capture │──────▶│  LLM Doc API     │──────▶│              │
 │  wf add     │       │  (write)         │       │              │
 │  wf move    │       └──────────────────┘       │              │
-│  wf complete│                                   │              │
+│  wf complete│                                  │              │
 ├─────────────┤       ┌──────────────────┐       │              │
-│  wf sync    │──────▶│  v1 Export API  │◀──────│              │
+│  wf sync    │──────▶│  v1 Export API   │◀──────│              │
 │  wf diff    │       │  (full tree)     │       └──────────────┘
 └─────────────┘       └──────────────────┘
 ```
@@ -132,11 +132,11 @@ $ wf propose "move uncompleted todos from @today to @tomorrow"
 |---------|-------------|
 | `wf config get <key>` | Read a config value (dotted path) |
 | `wf config set <key> <value>` | Write a config value |
-| `wf login` | Authenticate with a WorkFlowy API key |
+| `wf login` | Authenticate with a Workflowy API key |
 
 ## @Targets & Path Syntax
 
-Named targets resolve bookmarks and built-in WorkFlowy locations so you don't need raw node IDs:
+Named targets resolve bookmarks and built-in Workflowy locations so you don't need raw node IDs:
 
 | Target | Resolves to |
 |--------|-------------|
@@ -144,7 +144,7 @@ Named targets resolve bookmarks and built-in WorkFlowy locations so you don't ne
 | `@today` | Today's date node |
 | `@tomorrow` | Tomorrow's date node |
 | `@calendar` | Calendar root |
-| `@{shortcut}` | Any saved WorkFlowy shortcut |
+| `@{shortcut}` | Any saved Workflowy shortcut |
 
 Any command that accepts a target also accepts **path syntax** — traverse into children by name:
 
@@ -233,7 +233,7 @@ bun run build    # Compiles standalone binary → dist/wf
 ## Architecture
 
 ```
-workflowy-cli/
+Workflowy-cli/
 ├── cli/
 │   ├── wf.ts                  # Entry point, command registration
 │   ├── agent.ts               # Agent mode detection
@@ -256,7 +256,7 @@ workflowy-cli/
 │   │   ├── config.ts          # Config get/set
 │   │   └── targets.ts         # List targets
 │   ├── shared/
-│   │   ├── api.ts             # WorkFlowy API client (v1 + LLM doc)
+│   │   ├── api.ts             # Workflowy API client (v1 + LLM doc)
 │   │   ├── cache.ts           # SQLite cache (nodes, FTS, meta, dirty flags)
 │   │   ├── config.ts          # ~/.workflowy/config.json management
 │   │   ├── db.ts              # Legacy DB (bookmarks, proposals)
@@ -270,7 +270,7 @@ workflowy-cli/
 └── dist/wf                    # Compiled binary
 ```
 
-**Local data** (stored in `~/.workflowy/`):
+**Local data** (stored in `~/.Workflowy/`):
 
 | File | Purpose |
 |------|---------|
