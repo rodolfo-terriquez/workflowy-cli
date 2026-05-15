@@ -22,16 +22,6 @@ import { registerDiff } from "./commands/diff.ts";
 
 const VERSION = "0.2.0";
 
-const LOGO = `
-${chalk.hex("#44b8f7")("    ╭──────────────────────────╮")}
-${chalk.hex("#44b8f7")("    │")}                            ${chalk.hex("#44b8f7")("│")}
-${chalk.hex("#44b8f7")("    │")}   ${chalk.hex("#3da3e0")("●")} ${chalk.bold.white("W o r k F l o w y")}      ${chalk.hex("#44b8f7")("│")}
-${chalk.hex("#44b8f7")("    │")}     ${chalk.hex("#3da3e0")("●")} ${chalk.dim.white("Command Line")}         ${chalk.hex("#44b8f7")("│")}
-${chalk.hex("#44b8f7")("    │")}       ${chalk.hex("#3da3e0")("●")} ${chalk.dim.white("Interface")}          ${chalk.hex("#44b8f7")("│")}
-${chalk.hex("#44b8f7")("    │")}                            ${chalk.hex("#44b8f7")("│")}
-${chalk.hex("#44b8f7")("    ╰──────────────────────────╯")}
-`;
-
 const BANNER = `
 ${chalk.hex("#3da3e0").bold("  ╦ ╦╔═╗╦═╗╦╔═╔═╗╦  ╔═╗╦ ╦╦ ╦")}
 ${chalk.hex("#42b0ec").bold("  ║║║║ ║╠╦╝╠╩╗╠╣ ║  ║ ║║║║╚╦╝")}
@@ -44,7 +34,79 @@ ${chalk.dim(`  v${VERSION}`)}
 function showWelcome(): void {
   if (isAgentMode()) return;
   console.log(BANNER);
-  console.log(LOGO);
+  printColoredHelp();
+}
+
+function printColoredHelp(): void {
+  const c = chalk.hex("#47b8f5");
+  const dim = chalk.dim;
+  const w = chalk.white;
+
+  console.log(`  ${w("Usage:")} ${c("wf")} ${dim("[command] [options]")}\n`);
+
+  const sections: Array<{ title: string; commands: Array<[string, string]> }> = [
+    {
+      title: "Read & Navigate",
+      commands: [
+        ["read [target]",         "Read a node and its children"],
+        ["search <query>",        "Full-text search across all nodes"],
+        ["find <name-or-path>",   "Find nodes by name or @target/path"],
+        ["context <target>",      "Node + ancestors, siblings, and children"],
+        ["targets",               "List all available @targets"],
+        ["export <target>",       "Export a subtree (outline, JSON, markdown)"],
+      ],
+    },
+    {
+      title: "Write",
+      commands: [
+        ["capture <text>",        "Quick-add to inbox (or --to @target)"],
+        ["add <target> <text>",   "Add a child node to a target"],
+        ["move <node> <target>",  "Move a node to a different parent"],
+        ["complete <node>",       "Mark a todo as complete (--undo to uncheck)"],
+        ["batch",                 "Execute a JSON array of ops from stdin"],
+      ],
+    },
+    {
+      title: "Sync & Diff",
+      commands: [
+        ["sync",                  "Pull full tree into local cache"],
+        ["diff",                  "What changed since last sync"],
+      ],
+    },
+    {
+      title: "Propose & Apply",
+      commands: [
+        ["propose <instruction>", "Generate a structured diff via LLM"],
+        ["preview",               "Re-show the pending proposal"],
+        ["apply",                 "Execute the pending proposal"],
+        ["reject",                "Discard the pending proposal"],
+      ],
+    },
+    {
+      title: "Setup",
+      commands: [
+        ["login [apiKey]",        "Authenticate with WorkFlowy"],
+        ["config get|set <key>",  "Manage CLI configuration"],
+      ],
+    },
+  ];
+
+  for (const section of sections) {
+    console.log(`  ${chalk.bold(section.title)}`);
+    for (const [cmd, desc] of section.commands) {
+      const padded = cmd.padEnd(24);
+      console.log(`    ${c(padded)} ${dim(desc)}`);
+    }
+    console.log("");
+  }
+
+  console.log(`  ${w("Options")}`);
+  console.log(`    ${c("--agent".padEnd(24))} ${dim("JSON output, no colors")}`);
+  console.log(`    ${c("--live".padEnd(24))} ${dim("Bypass cache, hit API directly")}`);
+  console.log(`    ${c("--format json|markdown".padEnd(24))} ${dim("Output format")}`);
+  console.log(`    ${c("-v, --version".padEnd(24))} ${dim("Show version number")}`);
+  console.log(`    ${c("-h, --help".padEnd(24))} ${dim("Show help for any command")}`);
+  console.log("");
 }
 
 const program = new Command();
@@ -79,7 +141,6 @@ registerDiff(program);
 
 if (process.argv.length <= 2) {
   showWelcome();
-  program.outputHelp();
   process.exit(0);
 }
 
