@@ -17,6 +17,8 @@ export interface WFConfig {
   activeAccount: string;
   accounts: Record<string, AccountConfig>;
   llm?: LlmConfig;
+  aliases?: Record<string, string>;
+  [key: string]: unknown;
 }
 
 const CONFIG_DIR = join(homedir(), ".workflowy");

@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
 import { loadConfig, saveConfig } from "../shared/config.ts";
 import { isAgentMode } from "../agent.ts";
+import { exitWithError } from "../shared/errors.ts";
 
 export function registerLogin(program: Command): void {
   program
@@ -14,15 +15,13 @@ export function registerLogin(program: Command): void {
 
       if (!key) {
         if (!process.stdin.isTTY) {
-          console.error("API key required. Pass it as an argument, or set WORKFLOWY_API_KEY.");
-          process.exit(1);
+          exitWithError("missing_api_key", "API key required. Pass it as an argument, or set WORKFLOWY_API_KEY.");
         }
         key = await prompt("API key: ");
       }
 
       if (!key?.trim()) {
-        console.error("API key is required.");
-        process.exit(1);
+        exitWithError("missing_api_key", "API key is required.");
       }
 
       key = key.trim();
@@ -43,14 +42,18 @@ export function registerLogin(program: Command): void {
           console.log(`\n  ${chalk.green("✓")} Authenticated successfully`);
           console.log(`  Account saved as "${opts.account}"\n`);
         } else {
-          console.log(JSON.stringify({ message: "Authenticated successfully", account: opts.account }));
+          console.log(JSON.stringify({
+            meta: { command: "login", wf_version: "3.0.0" },
+            message: "Authenticated successfully",
+            account: opts.account,
+          }));
         }
       } catch (err) {
-        console.error(
-          `\nLogin failed: ${err instanceof Error ? err.message : String(err)}`
+        exitWithError(
+          "login_failed",
+          `Login failed: ${err instanceof Error ? err.message : String(err)}`,
+          "Check that your API key is valid."
         );
-        console.error("Check that your API key is valid.\n");
-        process.exit(1);
       }
     });
 }

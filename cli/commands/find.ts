@@ -1,24 +1,30 @@
 import type { Command } from "commander";
 import chalk from "chalk";
-import { findByNameOrPath, isDirectId } from "../shared/path.ts";
-import { buildBreadcrumbDisplay, getCacheNodeCount } from "../shared/cache.ts";
+import { findByNameOrPath } from "../shared/path.ts";
+import { buildBreadcrumbDisplay, getCacheNodeCount, getCacheAgeSeconds, isCacheStale } from "../shared/cache.ts";
 import { cleanHtml } from "../shared/nodes.ts";
 import { formatJson } from "../output/json.ts";
+import { formatTsv, formatCsv, type TsvRow } from "../shared/output-formats.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
+import { loadConfig } from "../shared/config.ts";
+import { startOutputCapture, handleCopyFlag } from "../shared/copy-wrapper.ts";
 
-export function registerFind(program: Command): void {
+export function registerNodeFind(program: Command): void {
   program
-    .command("find <pathOrName>")
+    .command("node:find <pathOrName>")
     .description("Find nodes by name or path (uses local cache)")
-    .option("--format <type>", "Output format (outline|json)")
-    .action((pathOrName: string, opts: { format?: string }) => {
+    .option("--format <type>", "Output format (outline|json|tsv|csv)")
+    .option("--copy", "Copy output to clipboard")
+    .action(async (pathOrName: string, opts: { format?: string; copy?: boolean }) => {
+      if (opts.copy) startOutputCapture();
+
       if (getCacheNodeCount() === 0) {
-        exitWithError("cache_empty", "Cache is empty.", "Run `wf sync` first to populate the local cache.");
+        exitWithError("cache_empty", "Cache is empty.", "Run `wf cache:sync` first to populate the local cache.");
       }
 
       const matches = findByNameOrPath(pathOrName);
-      const useJson = opts.format === "json" || isAgentMode();
+      const format = opts.format ?? (isAgentMode() ? "json" : "outline");
 
       if (matches.length === 0) {
         exitWithError(
@@ -28,12 +34,32 @@ export function registerFind(program: Command): void {
         );
       }
 
-      if (useJson) {
+      if (format === "tsv" || format === "csv") {
+        const rows: TsvRow[] = matches.map((m) => ({
+          id: m.id,
+          name: cleanHtml(m.name),
+          note: m.note ? cleanHtml(m.note) : "",
+          type: (m.line_type as string) ?? "bullet",
+          completed: m.completed === 1 ? "true" : "false",
+          parent_path: m.parent_id ? buildBreadcrumbDisplay(m.parent_id) : "(root)",
+        }));
+        console.log(format === "tsv" ? formatTsv(rows) : formatCsv(rows));
+        await handleCopyFlag(!!opts.copy);
+        return;
+      }
+
+      if (format === "json") {
+        const config = loadConfig();
+        const cacheAge = getCacheAgeSeconds();
         console.log(formatJson({
           meta: {
-            command: "find",
+            command: "node:find",
             target: pathOrName,
             timestamp: new Date().toISOString(),
+            account: config.activeAccount,
+            cache_age_seconds: cacheAge,
+            cache_stale: isCacheStale(),
+            wf_version: "3.0.0",
           },
           nodes: matches.map((m) => ({
             id: m.id,
@@ -41,10 +67,12 @@ export function registerFind(program: Command): void {
             note: m.note ? cleanHtml(m.note) : null,
             type: (m.line_type as "bullet" | "todo") ?? "bullet",
             completed: m.completed === 1,
+            parent_path: m.parent_id ? buildBreadcrumbDisplay(m.parent_id) : "(root)",
             hasMore: false,
             children: [],
           })),
         }));
+        await handleCopyFlag(!!opts.copy);
         return;
       }
 
@@ -58,5 +86,7 @@ export function registerFind(program: Command): void {
         console.log(`  ${chalk.dim(m.id)}  ${name}`);
         console.log(`  ${chalk.dim("Path:")} ${chalk.dim(path)}\n`);
       }
+
+      await handleCopyFlag(!!opts.copy);
     });
 }

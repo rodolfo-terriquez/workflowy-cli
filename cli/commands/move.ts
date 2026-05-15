@@ -5,14 +5,14 @@ import { requireToken, loadConfig } from "../shared/config.ts";
 import { resolveTarget } from "../targets.ts";
 import { parseLlmDocResponse } from "../shared/nodes.ts";
 import { getNodeById, getCacheNodeCount, getCacheAgeSeconds, isCacheStale, markTargetDirty } from "../shared/cache.ts";
-import { resolvePathOrId, isDirectId, findByNameOrPath } from "../shared/path.ts";
+import { isDirectId, findByNameOrPath } from "../shared/path.ts";
 import { formatJson } from "../output/json.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 
-export function registerMove(program: Command): void {
+export function registerNodeMove(program: Command): void {
   program
-    .command("move <nodeId> <target>")
+    .command("node:move <nodeId> <target>")
     .description("Move a node to a different parent")
     .option("--position <pos>", "Position: top or bottom", "top")
     .option("--format <type>", "Output format (outline|json)")
@@ -27,7 +27,6 @@ export function registerMove(program: Command): void {
 
         const resolvedNodeId = await resolveNodeArg(nodeId, api);
         const resolved = resolveTarget(target);
-
         const hasCache = getCacheNodeCount() > 0;
 
         if (hasCache) {
@@ -47,7 +46,6 @@ export function registerMove(program: Command): void {
           await moveLive(api, resolvedNodeId, resolved.id, opts.position);
         }
 
-        // Mark both source parent and destination dirty
         if (hasCache) {
           const cached = getNodeById(resolvedNodeId);
           if (cached?.parent_id) markTargetDirty(cached.parent_id);
@@ -60,11 +58,12 @@ export function registerMove(program: Command): void {
         if (useJson) {
           const config = loadConfig();
           const meta: Record<string, unknown> = {
-            command: "move",
+            command: "node:move",
             target,
             resolved_id: resolved.id,
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
+            wf_version: "3.0.0",
           };
           if (cacheAge !== null) {
             meta.cache_age_seconds = cacheAge;
@@ -112,5 +111,5 @@ async function resolveNodeArg(input: string, api: WorkflowyAPI): Promise<string>
     }
   }
 
-  exitWithError("node_not_found", `Node "${input}" not found`, "Use a hex node ID or run `wf sync` first for path resolution");
+  exitWithError("node_not_found", `Node "${input}" not found`, "Use a hex node ID or run `wf cache:sync` first for path resolution");
 }

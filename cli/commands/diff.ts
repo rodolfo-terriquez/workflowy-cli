@@ -4,7 +4,6 @@ import { WorkflowyAPI } from "../shared/api.ts";
 import { requireToken } from "../shared/config.ts";
 import {
   getCacheDb,
-  getLastSyncedAt,
   getCacheNodeCount,
   replaceAllNodes,
 } from "../shared/cache.ts";
@@ -12,14 +11,14 @@ import { cleanHtml } from "../shared/nodes.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 
-export function registerDiff(program: Command): void {
+export function registerCacheDiff(program: Command): void {
   program
-    .command("diff")
+    .command("cache:diff")
     .description("Show what changed since last sync")
     .option("--since <duration>", "Only show changes within this window (e.g. 30m, 2h)")
     .action(async (opts: { since?: string }) => {
       if (getCacheNodeCount() === 0) {
-        exitWithError("cache_empty", "Cache is empty.", "Run `wf sync` first.");
+        exitWithError("cache_empty", "Cache is empty.", "Run `wf cache:sync` first.");
       }
 
       const token = requireToken();
@@ -78,7 +77,7 @@ export function registerDiff(program: Command): void {
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "diff", timestamp: new Date().toISOString(), since: opts.since ?? null },
+          meta: { command: "cache:diff", timestamp: new Date().toISOString(), since: opts.since ?? null, wf_version: "3.0.0" },
           added: added.map((a) => ({ id: a.id, name: cleanHtml(a.name) })),
           modified: modified.map((m) => ({ id: m.id, name: cleanHtml(m.name), changes: m.changes })),
           deleted: deleted.map((d) => ({ id: d.id, name: cleanHtml(d.name) })),

@@ -6,13 +6,17 @@ import { cleanHtml } from "../shared/nodes.ts";
 import { listAllTargets } from "../targets.ts";
 import { formatJson } from "../output/json.ts";
 import { isAgentMode } from "../agent.ts";
+import { startOutputCapture, handleCopyFlag } from "../shared/copy-wrapper.ts";
 
 export function registerTargets(program: Command): void {
   program
     .command("targets")
-    .description("List all available @targets (system + shortcuts)")
+    .description("List all available @targets (system + bookmarks)")
     .option("--format <type>", "Output format (outline|json)")
-    .action(async (opts: { format?: string }) => {
+    .option("--copy", "Copy output to clipboard")
+    .action(async (opts: { format?: string; copy?: boolean }) => {
+      if (opts.copy) startOutputCapture();
+
       const token = requireToken();
       const api = new WorkflowyAPI(token);
       const targets = await listAllTargets(api);
@@ -26,6 +30,7 @@ export function registerTargets(program: Command): void {
               command: "targets",
               timestamp: new Date().toISOString(),
               account: config.activeAccount,
+              wf_version: "3.0.0",
             },
             nodes: targets.map((t) => ({
               id: t.key,
@@ -38,6 +43,7 @@ export function registerTargets(program: Command): void {
             })),
           })
         );
+        await handleCopyFlag(!!opts.copy);
         return;
       }
 
@@ -47,10 +53,12 @@ export function registerTargets(program: Command): void {
         const typeLabel =
           t.type === "system"
             ? chalk.dim("[system]")
-            : chalk.dim("[shortcut]");
+            : chalk.dim("[bookmark]");
         const name = t.name ? `  ${cleanHtml(t.name)}` : "";
         console.log(`  ${tag} ${typeLabel}${name}`);
       }
       console.log("");
+
+      await handleCopyFlag(!!opts.copy);
     });
 }

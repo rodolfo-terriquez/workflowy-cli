@@ -2,45 +2,40 @@ import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
 import { requireToken, loadConfig } from "../shared/config.ts";
-import { getCacheNodeCount, getCacheAgeSeconds, isCacheStale, markTargetDirty } from "../shared/cache.ts";
+import { getCacheNodeCount, getCacheAgeSeconds, isCacheStale, markTargetDirty, getNodeById } from "../shared/cache.ts";
 import { isDirectId, findByNameOrPath } from "../shared/path.ts";
 import { formatJson } from "../output/json.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 
-export function registerNodeComplete(program: Command): void {
+export function registerNodeDelete(program: Command): void {
   program
-    .command("node:complete <nodeIdOrPath>")
-    .description("Mark a todo as complete")
-    .option("--undo", "Uncheck the todo")
+    .command("node:delete <nodeIdOrPath>")
+    .description("Delete a node")
     .option("--format <type>", "Output format (outline|json)")
     .action(
       async (
         nodeIdOrPath: string,
-        opts: { undo?: boolean; format?: string }
+        opts: { format?: string }
       ) => {
         const token = requireToken();
         const api = new WorkflowyAPI(token);
 
         const nodeId = resolveNodeArg(nodeIdOrPath);
 
-        await api.readDoc(nodeId, 1);
-        await api.editDoc(nodeId, [
-          {
-            op: "update",
-            ref: nodeId,
-            to: { x: opts.undo ? 0 : 1 },
-          },
-        ]);
+        const cached = getCacheNodeCount() > 0 ? getNodeById(nodeId) : null;
+        const parentId = cached?.parent_id ?? nodeId;
 
-        markTargetDirty(nodeId);
-        const action = opts.undo ? "Uncompleted" : "Completed";
+        await api.readDoc(parentId, 1);
+        await api.editDoc(parentId, [{ op: "delete", ref: nodeId }]);
+
+        markTargetDirty(parentId);
         const useJson = opts.format === "json" || isAgentMode();
 
         if (useJson) {
           const config = loadConfig();
           const meta: Record<string, unknown> = {
-            command: "node:complete",
+            command: "node:delete",
             target: nodeIdOrPath,
             resolved_id: nodeId,
             timestamp: new Date().toISOString(),
@@ -52,10 +47,9 @@ export function registerNodeComplete(program: Command): void {
             meta.cache_age_seconds = cacheAge;
             meta.cache_stale = isCacheStale();
           }
-          console.log(formatJson({ meta, message: `${action} ${nodeId}` }));
+          console.log(formatJson({ meta, message: `Deleted ${nodeId}` }));
         } else {
-          const icon = opts.undo ? chalk.yellow("☐") : chalk.green("✓");
-          console.log(`\n  ${icon} ${action} ${chalk.dim(nodeId)}\n`);
+          console.log(`\n  ${chalk.red("✗")} Deleted ${chalk.dim(nodeId)}\n`);
         }
       }
     );
@@ -76,5 +70,5 @@ function resolveNodeArg(input: string): string {
     }
   }
 
-  exitWithError("node_not_found", `Node "${input}" not found`, "Use a hex node ID or run `wf cache:sync` first for path resolution");
+  exitWithError("node_not_found", `Node "${input}" not found`, "Use a hex node ID or run `wf cache:sync` first");
 }

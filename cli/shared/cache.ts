@@ -13,6 +13,13 @@ export function getCacheDb(): Database {
   return _db;
 }
 
+export function resetCacheDb(): void {
+  if (_db) {
+    _db.close(false);
+    _db = null;
+  }
+}
+
 function initCacheSchema(db: Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS nodes (
@@ -42,6 +49,20 @@ function initCacheSchema(db: Database): void {
       value TEXT NOT NULL
     );
   `);
+
+  try {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS nodes_trigram USING fts5(
+        name,
+        note,
+        content=nodes,
+        content_rowid=rowid,
+        tokenize='trigram'
+      );
+    `);
+  } catch {
+    // Older SQLite builds may not have the trigram tokenizer available.
+  }
 }
 
 // --- Meta helpers ---
@@ -210,6 +231,29 @@ export function searchNodes(query: string, limit = 20): SearchResult[] {
   }));
 }
 
+export function searchNodesByTrigram(matchQuery: string, limit = 20): SearchResult[] {
+  if (!matchQuery.trim()) return [];
+
+  const db = getCacheDb();
+
+  try {
+    const rows = db.query(`
+      SELECT n.*, 0 as rank
+      FROM nodes_trigram
+      JOIN nodes n ON n.rowid = nodes_trigram.rowid
+      WHERE nodes_trigram MATCH ?
+      LIMIT ?
+    `).all(matchQuery, limit) as Array<CachedNode & { rank: number }>;
+
+    return rows.map((row) => ({
+      ...row,
+      parent_path: row.parent_id ? buildBreadcrumbDisplay(row.parent_id) : "(root)",
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // --- Sync from API export ---
 
 export function replaceAllNodes(
@@ -231,6 +275,11 @@ export function replaceAllNodes(
   const txn = db.transaction(() => {
     db.run("DELETE FROM nodes");
     db.run("DELETE FROM nodes_fts");
+    try {
+      db.run("DELETE FROM nodes_trigram");
+    } catch {
+      // Trigram index is optional.
+    }
 
     const insert = db.query(`
       INSERT INTO nodes (id, parent_id, name, note, line_type, completed, priority, created_at, modified_at, synced_at)
@@ -253,6 +302,11 @@ export function replaceAllNodes(
     }
 
     db.run("INSERT INTO nodes_fts(nodes_fts) VALUES('rebuild')");
+    try {
+      db.run("INSERT INTO nodes_trigram(nodes_trigram) VALUES('rebuild')");
+    } catch {
+      // Trigram index is optional.
+    }
 
     setMeta("last_synced_at", String(syncedAt));
     setMeta("node_count", String(nodes.length));
@@ -316,6 +370,11 @@ export function upsertNodesFromApi(
     }
 
     db.run("INSERT INTO nodes_fts(nodes_fts) VALUES('rebuild')");
+    try {
+      db.run("INSERT INTO nodes_trigram(nodes_trigram) VALUES('rebuild')");
+    } catch {
+      // Trigram index is optional.
+    }
   });
 
   txn();

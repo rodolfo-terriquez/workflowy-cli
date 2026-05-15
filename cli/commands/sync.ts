@@ -20,9 +20,9 @@ const SYSTEM_TARGETS = ["inbox", "today", "tomorrow", "calendar", "next_week"];
 
 const PID_PATH = join(getConfigDir(), "sync.pid");
 
-export function registerSync(program: Command): void {
+export function registerCacheSync(program: Command): void {
   program
-    .command("sync")
+    .command("cache:sync")
     .description("Sync local cache from WorkFlowy API")
     .option("--watch", "Background daemon, re-syncs every 5 min")
     .option("--status", "Show last sync time and node count")
@@ -47,7 +47,7 @@ export function registerSync(program: Command): void {
     });
 }
 
-async function doSync(): Promise<void> {
+export async function doSync(): Promise<{ nodeCount: number; syncedAt: number }> {
   const token = requireToken();
   const api = new WorkflowyAPI(token);
 
@@ -64,7 +64,7 @@ async function doSync(): Promise<void> {
 
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "sync", timestamp: new Date().toISOString() },
+      meta: { command: "cache:sync", timestamp: new Date().toISOString(), wf_version: "3.0.0" },
       message: `Synced ${nodeCount} nodes`,
       node_count: nodeCount,
       synced_at: syncedAt,
@@ -73,6 +73,8 @@ async function doSync(): Promise<void> {
   } else {
     process.stdout.write(`\r  ${chalk.green("✓")} Synced ${chalk.bold(String(nodeCount))} nodes in ${elapsed}s\n\n`);
   }
+
+  return { nodeCount, syncedAt };
 }
 
 function showStatus(): void {
@@ -82,7 +84,7 @@ function showStatus(): void {
 
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "sync --status", timestamp: new Date().toISOString() },
+      meta: { command: "cache:sync", mode: "status", timestamp: new Date().toISOString(), wf_version: "3.0.0" },
       last_synced_at: lastSynced,
       node_count: nodeCount,
       cache_age_seconds: ageSeconds,
@@ -93,7 +95,7 @@ function showStatus(): void {
 
   console.log("");
   if (lastSynced === null) {
-    console.log(`  ${chalk.yellow("⚠")} Cache is empty. Run ${chalk.cyan("wf sync")} to populate.`);
+    console.log(`  ${chalk.yellow("⚠")} Cache is empty. Run ${chalk.cyan("wf cache:sync")} to populate.`);
   } else {
     const date = new Date(lastSynced);
     const age = formatAge(ageSeconds!);
@@ -127,7 +129,7 @@ function startDaemon(): void {
     }
   }
 
-  const child = Bun.spawn(["bun", "run", import.meta.dir + "/../wf.ts", "sync", "--watch-loop"], {
+  const child = Bun.spawn(["bun", "run", import.meta.dir + "/../wf.ts", "cache:sync", "--watch-loop"], {
     stdio: ["ignore", "ignore", "ignore"],
   });
 
@@ -167,20 +169,4 @@ async function resolveSystemTargets(api: WorkflowyAPI): Promise<void> {
       // Some targets may not exist for this account
     }
   }
-}
-
-// Hidden subcommand for the daemon loop
-export function registerSyncLoop(program: Command): void {
-  program
-    .command("sync --watch-loop", { hidden: true })
-    .action(async () => {
-      while (true) {
-        try {
-          await doSync();
-        } catch {
-          // silently retry
-        }
-        await Bun.sleep(5 * 60 * 1000);
-      }
-    });
 }

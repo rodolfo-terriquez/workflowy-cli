@@ -1,0 +1,463 @@
+import type { Command } from "commander";
+import chalk from "chalk";
+import { isAgentMode } from "../agent.ts";
+
+interface McpTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+const MCP_TOOLS: McpTool[] = [
+  {
+    name: "workflowy_read",
+    description: "Read a WorkFlowy node and its children",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: { type: "string", description: "Node target (@inbox, @today, node ID, or path)" },
+        depth: { type: "number", description: "Max depth to read", default: 3 },
+        live: { type: "boolean", description: "Bypass cache", default: false },
+      },
+      required: ["target"],
+    },
+  },
+  {
+    name: "workflowy_add",
+    description: "Add a new node",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "Node text" },
+        to: { type: "string", description: "Target parent", default: "@inbox" },
+        type: { type: "string", enum: ["bullet", "todo", "h1", "h2", "h3"], default: "bullet" },
+        note: { type: "string", description: "Note content" },
+      },
+      required: ["text"],
+    },
+  },
+  {
+    name: "workflowy_find",
+    description: "Find nodes by name or path",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Name, path, or @target" },
+        target: { type: "string", description: "Scope search to subtree" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "workflowy_todos",
+    description: "List open or completed todos",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: { type: "string", description: "Scope to subtree" },
+        completed: { type: "boolean", description: "Show completed instead", default: false },
+        since: { type: "string", description: "Time window (e.g. 2h, 7d)" },
+        limit: { type: "number", default: 50 },
+      },
+    },
+  },
+  {
+    name: "workflowy_tags",
+    description: "List all hashtags with counts",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: { type: "string", description: "Scope to subtree" },
+        filter: { type: "string", description: "Filter tags by substring" },
+      },
+    },
+  },
+  {
+    name: "workflowy_search",
+    description: "Full-text search across all nodes",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query" },
+        smart: { type: "boolean", description: "Enable AI reranking", default: false },
+        live: { type: "boolean", description: "Search API directly", default: false },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "workflowy_move",
+    description: "Move a node to a different parent",
+    inputSchema: {
+      type: "object",
+      properties: {
+        nodeId: { type: "string", description: "Node ID to move" },
+        to: { type: "string", description: "Destination parent" },
+        position: { type: "string", enum: ["top", "bottom"], default: "top" },
+      },
+      required: ["nodeId", "to"],
+    },
+  },
+  {
+    name: "workflowy_complete",
+    description: "Mark a todo as complete or uncomplete",
+    inputSchema: {
+      type: "object",
+      properties: {
+        nodeId: { type: "string", description: "Node ID" },
+        undo: { type: "boolean", description: "Uncheck instead", default: false },
+      },
+      required: ["nodeId"],
+    },
+  },
+  {
+    name: "workflowy_batch",
+    description: "Execute multiple operations in a batch",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ops: { type: "array", description: "Array of operations", items: { type: "object" } },
+      },
+      required: ["ops"],
+    },
+  },
+  {
+    name: "workflowy_propose",
+    description: "Generate a structured diff via LLM",
+    inputSchema: {
+      type: "object",
+      properties: {
+        instruction: { type: "string", description: "What changes to make" },
+      },
+      required: ["instruction"],
+    },
+  },
+  {
+    name: "workflowy_context",
+    description: "Show a node with ancestors, siblings, and children",
+    inputSchema: {
+      type: "object",
+      properties: {
+        nodeId: { type: "string", description: "Node ID or target" },
+      },
+      required: ["nodeId"],
+    },
+  },
+  {
+    name: "workflowy_sync",
+    description: "Sync the local cache from WorkFlowy API",
+    inputSchema: { type: "object", properties: {} },
+  },
+];
+
+async function handleToolCall(name: string, args: Record<string, unknown>): Promise<string> {
+  const cmdMap: Record<string, string[]> = {
+    workflowy_read: ["node:read", String(args.target ?? "@inbox"), ...(args.depth ? ["--depth", String(args.depth)] : []), ...(args.live ? ["--live"] : [])],
+    workflowy_add: ["node:add", String(args.to ?? "@inbox"), String(args.text ?? ""), ...(args.type ? ["--type", String(args.type)] : []), ...(args.note ? ["--note", String(args.note)] : [])],
+    workflowy_find: ["node:find", String(args.query ?? "")],
+    workflowy_todos: ["node:todos", ...(args.target ? ["--target", String(args.target)] : []), ...(args.completed ? ["--completed"] : []), ...(args.since ? ["--since", String(args.since)] : []), ...(args.limit ? ["--limit", String(args.limit)] : [])],
+    workflowy_tags: ["tags", ...(args.target ? ["--target", String(args.target)] : []), ...(args.filter ? ["--filter", String(args.filter)] : [])],
+    workflowy_search: ["search", String(args.query ?? ""), ...(args.smart ? ["--smart"] : []), ...(args.live ? ["--live"] : [])],
+    workflowy_move: ["node:move", String(args.nodeId ?? ""), String(args.to ?? ""), ...(args.position ? ["--position", String(args.position)] : [])],
+    workflowy_complete: ["node:complete", String(args.nodeId ?? ""), ...(args.undo ? ["--undo"] : [])],
+    workflowy_propose: ["ai:propose", String(args.instruction ?? "")],
+    workflowy_context: ["node:context", String(args.nodeId ?? "")],
+    workflowy_sync: ["cache:sync"],
+  };
+
+  const cmdArgs = cmdMap[name];
+  if (!cmdArgs) return JSON.stringify({ error: `Unknown tool: ${name}` });
+
+  const proc = Bun.spawn(["bun", "run", import.meta.dir + "/../wf.ts", ...cmdArgs, "--agent"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const stdout = await new Response(proc.stdout).text();
+  await proc.exited;
+  return stdout;
+}
+
+export function registerMcp(program: Command): void {
+  program
+    .command("mcp")
+    .description("Start as MCP server (stdio or HTTP/SSE transport)")
+    .option("--port <n>", "HTTP/SSE port (e.g. 3399)")
+    .option("--tools <list>", "Comma-separated list of tools to expose")
+    .action(async (opts: { port?: string; tools?: string }) => {
+      const allowedTools = opts.tools ? new Set(opts.tools.split(",").map((t) => t.trim())) : null;
+      const tools = allowedTools
+        ? MCP_TOOLS.filter((t) => allowedTools.has(t.name.replace("workflowy_", "")))
+        : MCP_TOOLS;
+
+      if (opts.port) {
+        await startHttpSseServer(Number(opts.port), tools);
+      } else {
+        await startStdioServer(tools);
+      }
+    });
+}
+
+async function startStdioServer(tools: McpTool[]): Promise<void> {
+  const reader = Bun.stdin.stream().getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      buffer += decoder.decode();
+    } else {
+      buffer += decoder.decode(value, { stream: true });
+    }
+
+    const { messages, rest } = extractStdioMessages(buffer, done);
+    buffer = rest;
+
+    for (const message of messages) {
+      const response = await handleMcpMessage(message.payload, tools);
+      if (!response) continue;
+
+      const responseStr = JSON.stringify(response);
+      if (message.format === "content-length") {
+        const responseBytes = new TextEncoder().encode(responseStr);
+        process.stdout.write(`Content-Length: ${responseBytes.length}\r\n\r\n${responseStr}`);
+      } else {
+        process.stdout.write(`${responseStr}\n`);
+      }
+    }
+
+    if (done) {
+      break;
+    }
+  }
+}
+
+type StdioMessage = {
+  format: "content-length" | "line";
+  payload: Record<string, unknown>;
+};
+
+function extractStdioMessages(
+  input: string,
+  flushFinalLine: boolean,
+): { messages: StdioMessage[]; rest: string } {
+  const messages: StdioMessage[] = [];
+  let buffer = input;
+
+  while (true) {
+    const stripped = buffer.replace(/^\r?\n+/, "");
+    if (stripped !== buffer) {
+      buffer = stripped;
+    }
+
+    const framed = extractContentLengthMessage(buffer);
+    if (framed.kind === "message") {
+      buffer = framed.rest;
+      try {
+        const payload = JSON.parse(framed.body) as Record<string, unknown>;
+        messages.push({ format: "content-length", payload });
+      } catch {
+        // Skip malformed payloads and continue parsing the stream.
+      }
+      continue;
+    }
+
+    if (framed.kind === "incomplete") {
+      break;
+    }
+
+    const newlineIndex = buffer.indexOf("\n");
+    if (newlineIndex === -1) {
+      if (!flushFinalLine) break;
+      const line = buffer.trim();
+      buffer = "";
+      if (!line) break;
+
+      try {
+        const payload = JSON.parse(line) as Record<string, unknown>;
+        messages.push({ format: "line", payload });
+      } catch {
+        // Ignore trailing malformed input.
+      }
+      break;
+    }
+
+    const line = buffer.slice(0, newlineIndex).trim();
+    buffer = buffer.slice(newlineIndex + 1);
+
+    if (!line) {
+      continue;
+    }
+
+    try {
+      const payload = JSON.parse(line) as Record<string, unknown>;
+      messages.push({ format: "line", payload });
+    } catch {
+      // Ignore malformed line-delimited payloads.
+    }
+  }
+
+  return { messages, rest: buffer };
+}
+
+function extractContentLengthMessage(input: string):
+  | { kind: "message"; body: string; rest: string }
+  | { kind: "incomplete" }
+  | { kind: "none" } {
+  const crlfHeaderEnd = input.indexOf("\r\n\r\n");
+  const lfHeaderEnd = input.indexOf("\n\n");
+  const headerEnd = crlfHeaderEnd !== -1
+    ? { index: crlfHeaderEnd, delimiterLength: 4 }
+    : lfHeaderEnd !== -1
+      ? { index: lfHeaderEnd, delimiterLength: 2 }
+      : null;
+
+  if (!headerEnd) {
+    if (/^Content-Length:/i.test(input)) {
+      return { kind: "incomplete" };
+    }
+    return { kind: "none" };
+  }
+
+  const header = input.slice(0, headerEnd.index);
+  if (!/^Content-Length:/im.test(header)) {
+    return { kind: "none" };
+  }
+
+  const lengthMatch = header.match(/Content-Length:\s*(\d+)/i);
+  if (!lengthMatch) {
+    return { kind: "none" };
+  }
+
+  const contentLength = Number(lengthMatch[1]);
+  const bodyStart = headerEnd.index + headerEnd.delimiterLength;
+  if (input.length < bodyStart + contentLength) {
+    return { kind: "incomplete" };
+  }
+
+  return {
+    kind: "message",
+    body: input.slice(bodyStart, bodyStart + contentLength),
+    rest: input.slice(bodyStart + contentLength),
+  };
+}
+
+async function startHttpSseServer(port: number, tools: McpTool[]): Promise<void> {
+  const sessions = new Map<string, ReadableStreamDefaultController>();
+
+  Bun.serve({
+    port,
+    async fetch(req) {
+      const url = new URL(req.url);
+
+      if (url.pathname === "/sse" && req.method === "GET") {
+        const sessionId = crypto.randomUUID();
+        const stream = new ReadableStream({
+          start(controller) {
+            sessions.set(sessionId, controller);
+            const endpoint = `http://localhost:${port}/message?sessionId=${sessionId}`;
+            controller.enqueue(`event: endpoint\ndata: ${endpoint}\n\n`);
+          },
+          cancel() {
+            sessions.delete(sessionId);
+          },
+        });
+
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+          },
+        });
+      }
+
+      if (url.pathname === "/message" && req.method === "POST") {
+        const sessionId = url.searchParams.get("sessionId");
+        if (!sessionId || !sessions.has(sessionId)) {
+          return new Response(JSON.stringify({ error: "Invalid session" }), { status: 400 });
+        }
+
+        const controller = sessions.get(sessionId)!;
+        const body = await req.json() as Record<string, unknown>;
+        const response = await handleMcpMessage(body, tools);
+
+        if (response) {
+          const responseStr = JSON.stringify(response);
+          controller.enqueue(`event: message\ndata: ${responseStr}\n\n`);
+        }
+
+        return new Response("accepted", { status: 202 });
+      }
+
+      return new Response("Not Found", { status: 404 });
+    },
+  });
+
+  if (!isAgentMode()) {
+    console.log(chalk.green(`\n  MCP HTTP/SSE server listening on port ${port}`));
+    console.log(chalk.dim(`  SSE endpoint: http://localhost:${port}/sse`));
+    console.log(chalk.dim(`  Message endpoint: http://localhost:${port}/message?sessionId=<id>\n`));
+  }
+
+  // Keep the process alive
+  await new Promise(() => {});
+}
+
+async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]): Promise<Record<string, unknown> | null> {
+  const method = msg.method as string;
+  const id = msg.id;
+
+  if (method === "initialize") {
+    return {
+      jsonrpc: "2.0",
+      id,
+      result: {
+        protocolVersion: "2024-11-05",
+        capabilities: { tools: {} },
+        serverInfo: { name: "workflowy", version: "3.0.0" },
+      },
+    };
+  }
+
+  if (method === "notifications/initialized") {
+    return null;
+  }
+
+  if (method === "tools/list") {
+    return {
+      jsonrpc: "2.0",
+      id,
+      result: {
+        tools: tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          inputSchema: t.inputSchema,
+        })),
+      },
+    };
+  }
+
+  if (method === "tools/call") {
+    const params = msg.params as { name: string; arguments?: Record<string, unknown> };
+    const toolName = params.name;
+    const args = params.arguments ?? {};
+
+    const result = await handleToolCall(toolName, args);
+
+    return {
+      jsonrpc: "2.0",
+      id,
+      result: {
+        content: [{ type: "text", text: result }],
+      },
+    };
+  }
+
+  return {
+    jsonrpc: "2.0",
+    id,
+    error: { code: -32601, message: `Method not found: ${method}` },
+  };
+}

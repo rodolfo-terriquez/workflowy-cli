@@ -6,10 +6,11 @@ import { resolveTarget } from "../targets.ts";
 import { formatOutline } from "../output/compact.ts";
 import { formatJson } from "../output/json.ts";
 import { isAgentMode } from "../agent.ts";
+import { startOutputCapture, handleCopyFlag } from "../shared/copy-wrapper.ts";
 
 export function registerExport(program: Command): void {
   program
-    .command("export <target>")
+    .command("node:export <target>")
     .description("Export a subtree to stdout")
     .option("--depth <n>", "Max depth", parseInt)
     .option(
@@ -17,11 +18,14 @@ export function registerExport(program: Command): void {
       "Output format (outline|json|markdown)",
       "outline"
     )
+    .option("--copy", "Copy output to clipboard")
     .action(
       async (
         target: string,
-        opts: { depth?: number; format: string }
+        opts: { depth?: number; format: string; copy?: boolean }
       ) => {
+        if (opts.copy) startOutputCapture();
+
         const token = requireToken();
         const api = new WorkflowyAPI(token);
         const resolved = resolveTarget(target);
@@ -38,11 +42,12 @@ export function registerExport(program: Command): void {
             console.log(
               formatJson({
                 meta: {
-                  command: "export",
+                  command: "node:export",
                   target,
                   resolved_id: resolved.id,
                   timestamp: new Date().toISOString(),
                   account: config.activeAccount,
+                  wf_version: "3.0.0",
                 },
               node: {
                 id: node.id,
@@ -67,6 +72,8 @@ export function registerExport(program: Command): void {
             console.log(formatOutline(node, opts.depth));
             break;
         }
+
+        await handleCopyFlag(!!opts.copy);
       }
     );
 }

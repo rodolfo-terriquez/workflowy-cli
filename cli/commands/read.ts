@@ -20,26 +20,30 @@ import { resolvePathOrId, isDirectId } from "../shared/path.ts";
 import { formatOutline } from "../output/compact.ts";
 import { formatJson } from "../output/json.ts";
 import { isAgentMode } from "../agent.ts";
+import { recordAccess } from "../shared/history.ts";
+import { startOutputCapture, handleCopyFlag } from "../shared/copy-wrapper.ts";
 
-export function registerRead(program: Command): void {
+export function registerNodeRead(program: Command): void {
   program
-    .command("read [target]")
+    .command("node:read [target]")
     .description("Read a node and its children")
     .option("--depth <n>", "Max depth to read", parseInt)
     .option("--format <type>", "Output format (outline|json)")
     .option("--live", "Force live API call (bypass cache)")
     .option("--include-path", "Include breadcrumb path in JSON output")
+    .option("--copy", "Copy output to clipboard")
     .action(
       async (
         target: string | undefined,
-        opts: { depth?: number; format?: string; live?: boolean; includePath?: boolean }
+        opts: { depth?: number; format?: string; live?: boolean; includePath?: boolean; copy?: boolean }
       ) => {
+        if (opts.copy) startOutputCapture();
+
         const targetStr = target ?? "@inbox";
         const depth = opts.depth ?? 3;
         const useJson = opts.format === "json" || isAgentMode();
         const hasCache = getCacheNodeCount() > 0;
 
-        // Check if target was recently written to — force live to avoid stale reads
         const resolved = resolveTarget(targetStr);
         const dirty = isTargetDirty(resolved.id);
         const useLive = opts.live || !hasCache || dirty;
@@ -51,6 +55,8 @@ export function registerRead(program: Command): void {
         } else {
           readFromCache(targetStr, depth, useJson, opts.includePath);
         }
+
+        await handleCopyFlag(!!opts.copy);
       }
     );
 }
@@ -68,15 +74,22 @@ async function readLive(
   const data = await api.readDoc(resolved.id, depth);
   const { node, ancestors } = parseLlmDocResponse(data);
 
+  recordAccess({
+    id: node.id,
+    name: node.name,
+    path: ancestors.map((a) => a.name).join(" > ") || "(root)",
+  });
+
   if (useJson) {
     const config = loadConfig();
     const meta: Record<string, unknown> = {
-      command: "read",
+      command: "node:read",
       target: targetStr,
       resolved_id: resolved.id,
       timestamp: new Date().toISOString(),
       account: config.activeAccount,
       source: "live",
+      wf_version: "3.0.0",
     };
 
     const output: Record<string, unknown> = {
@@ -114,7 +127,7 @@ function readFromCache(
     if (!resolved) {
       const msg = `No node found matching path "${targetStr}"`;
       if (isAgentMode()) {
-        console.log(JSON.stringify({ error: { code: "node_not_found", message: msg, hint: "Try `wf read --live` or `wf sync`" } }, null, 2));
+        console.log(JSON.stringify({ error: { code: "node_not_found", message: msg, hint: "Try `wf node:read --live` or `wf cache:sync`" } }, null, 2));
       } else {
         console.error(`\n  ${msg}\n`);
       }
@@ -125,7 +138,6 @@ function readFromCache(
     nodeId = targetStr;
   } else {
     const resolved = resolveTarget(targetStr);
-    // Use stored target→UUID mapping from sync
     const uuid = getTargetUuid(resolved.id);
     if (uuid) {
       nodeId = uuid;
@@ -146,9 +158,9 @@ function readFromCache(
   if (!nodeId) {
     const msg = `Target "${targetStr}" not found in cache`;
     if (isAgentMode()) {
-      console.log(JSON.stringify({ error: { code: "node_not_found", message: msg, hint: "Try `wf read --live` or `wf sync`" } }, null, 2));
+      console.log(JSON.stringify({ error: { code: "node_not_found", message: msg, hint: "Try `wf node:read --live` or `wf cache:sync`" } }, null, 2));
     } else {
-      console.error(`\n  ${msg}. Try ${chalk.cyan("wf read --live")} or ${chalk.cyan("wf sync")}.\n`);
+      console.error(`\n  ${msg}. Try ${chalk.cyan("wf node:read --live")} or ${chalk.cyan("wf cache:sync")}.\n`);
     }
     process.exit(1);
   }
@@ -159,6 +171,12 @@ function readFromCache(
     return;
   }
 
+  recordAccess({
+    id: rootNode.id,
+    name: cleanHtml(rootNode.name),
+    path: rootNode.parent_id ? buildBreadcrumb(rootNode.parent_id).join(" > ") : "(root)",
+  });
+
   const flatNode = cachedNodeToFlat(rootNode, depth);
   const cacheAge = getCacheAgeSeconds();
   const stale = isCacheStale();
@@ -166,7 +184,7 @@ function readFromCache(
   if (useJson) {
     const config = loadConfig();
     const meta: Record<string, unknown> = {
-      command: "read",
+      command: "node:read",
       target: targetStr,
       resolved_id: nodeId,
       timestamp: new Date().toISOString(),
@@ -174,6 +192,7 @@ function readFromCache(
       source: "cache",
       cache_age_seconds: cacheAge,
       cache_stale: stale,
+      wf_version: "3.0.0",
     };
 
     const output: Record<string, unknown> = {
@@ -191,7 +210,7 @@ function readFromCache(
   } else {
     if (stale && !isAgentMode()) {
       const age = cacheAge ? formatAge(cacheAge) : "unknown";
-      console.log(`  ${chalk.yellow("⚠")} Cache is ${age} old. Run ${chalk.cyan("wf sync")} to refresh.`);
+      console.log(`  ${chalk.yellow("⚠")} Cache is ${age} old. Run ${chalk.cyan("wf cache:sync")} to refresh.`);
     }
 
     const breadcrumb = buildBreadcrumb(nodeId);

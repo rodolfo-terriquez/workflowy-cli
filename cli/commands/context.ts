@@ -1,7 +1,5 @@
 import type { Command } from "commander";
 import chalk from "chalk";
-import { requireToken } from "../shared/config.ts";
-import { WorkflowyAPI } from "../shared/api.ts";
 import {
   getNodeById,
   getChildren,
@@ -13,16 +11,16 @@ import {
 import { resolveTarget } from "../targets.ts";
 import { resolvePathOrId, isDirectId, findByNameOrPath } from "../shared/path.ts";
 import { cleanHtml } from "../shared/nodes.ts";
-import { formatJson } from "../output/json.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
+import { recordAccess } from "../shared/history.ts";
+import { startOutputCapture, handleCopyFlag } from "../shared/copy-wrapper.ts";
 
 function resolveTargetToCache(target: string): CachedNode | null {
   if (isDirectId(target)) {
     return getNodeById(target);
   }
 
-  // @target without path — use system target → UUID mapping
   if (target.startsWith("@") && !target.includes("/")) {
     const resolved = resolveTarget(target);
     const uuid = getTargetUuid(resolved.id);
@@ -30,25 +28,26 @@ function resolveTargetToCache(target: string): CachedNode | null {
     return null;
   }
 
-  // @target/with/path — path traversal
   if (target.startsWith("@") && target.includes("/")) {
     const pathResult = resolvePathOrId(target);
     return pathResult?.node ?? null;
   }
 
-  // Bare name — search
   const matches = findByNameOrPath(target);
   return matches.length === 1 ? matches[0]! : null;
 }
 
-export function registerContext(program: Command): void {
+export function registerNodeContext(program: Command): void {
   program
-    .command("context <target>")
+    .command("node:context <target>")
     .description("Show a node with its ancestors, siblings, and children")
     .option("--format <type>", "Output format (outline|json)")
-    .action((target: string, opts: { format?: string }) => {
+    .option("--copy", "Copy output to clipboard")
+    .action(async (target: string, opts: { format?: string; copy?: boolean }) => {
+      if (opts.copy) startOutputCapture();
+
       if (getCacheNodeCount() === 0) {
-        exitWithError("cache_empty", "Cache is empty.", "Run `wf sync` first.");
+        exitWithError("cache_empty", "Cache is empty.", "Run `wf cache:sync` first.");
       }
 
       const node = resolveTargetToCache(target);
@@ -64,8 +63,14 @@ export function registerContext(program: Command): void {
             );
           }
         }
-        exitWithError("node_not_found", `Node "${target}" not found in cache.`, "Run `wf sync` to refresh.");
+        exitWithError("node_not_found", `Node "${target}" not found in cache.`, "Run `wf cache:sync` to refresh.");
       }
+
+      recordAccess({
+        id: node.id,
+        name: cleanHtml(node.name),
+        path: node.parent_id ? buildBreadcrumbDisplay(node.parent_id) : "(root)",
+      });
 
       const path = node.parent_id ? buildBreadcrumbDisplay(node.parent_id) : "(root)";
       const siblings = node.parent_id ? getChildren(node.parent_id) : getChildren(null);
@@ -75,10 +80,11 @@ export function registerContext(program: Command): void {
       if (useJson) {
         console.log(JSON.stringify({
           meta: {
-            command: "context",
+            command: "node:context",
             target,
             resolved_id: node.id,
             timestamp: new Date().toISOString(),
+            wf_version: "3.0.0",
           },
           node: {
             id: node.id,
@@ -106,6 +112,7 @@ export function registerContext(program: Command): void {
           children_count: children.length,
           sibling_count: siblings.length - 1,
         }, null, 2));
+        await handleCopyFlag(!!opts.copy);
         return;
       }
 
@@ -141,5 +148,6 @@ export function registerContext(program: Command): void {
       }
 
       console.log("");
+      await handleCopyFlag(!!opts.copy);
     });
 }

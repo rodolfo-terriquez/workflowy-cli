@@ -4,14 +4,14 @@ import { WorkflowyAPI } from "../shared/api.ts";
 import { requireToken, loadConfig } from "../shared/config.ts";
 import { resolveTarget } from "../targets.ts";
 import { getCacheNodeCount, getCacheAgeSeconds, isCacheStale, markTargetDirty } from "../shared/cache.ts";
-import { resolvePathOrId, isDirectId } from "../shared/path.ts";
+import { resolvePathOrId } from "../shared/path.ts";
 import { formatJson } from "../output/json.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 
-export function registerAdd(program: Command): void {
+export function registerNodeAdd(program: Command): void {
   program
-    .command("add <target> <text>")
+    .command("node:add <target> <text>")
     .description("Add a child node to a target")
     .option("--type <type>", "Node layout (bullet|todo|h1|h2|h3)", "bullet")
     .option("--note <note>", "Note content for the node")
@@ -39,7 +39,7 @@ export function registerAdd(program: Command): void {
         if (target.startsWith("@") && target.includes("/") && getCacheNodeCount() > 0) {
           const pathResult = resolvePathOrId(target);
           if (!pathResult) {
-            exitWithError("node_not_found", `Path "${target}" not found in cache`, "Run `wf sync` to refresh");
+            exitWithError("node_not_found", `Path "${target}" not found in cache`, "Run `wf cache:sync` to refresh");
           }
           resolvedId = pathResult.node.id;
           resolvedLabel = target;
@@ -69,11 +69,12 @@ export function registerAdd(program: Command): void {
         if (useJson) {
           const config = loadConfig();
           const meta: Record<string, unknown> = {
-            command: "add",
+            command: "node:add",
             target,
             resolved_id: resolvedId,
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
+            wf_version: "3.0.0",
           };
           const cacheAge = getCacheAgeSeconds();
           if (cacheAge !== null) {
