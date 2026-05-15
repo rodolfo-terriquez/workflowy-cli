@@ -11,13 +11,17 @@ export function registerLogin(program: Command): void {
     .description("Authenticate with WorkFlowy using an API key")
     .option("--account <name>", "Account name", "default")
     .action(async (apiKey: string | undefined, opts: { account: string }) => {
-      let key = apiKey ?? process.env.WORKFLOWY_API_KEY;
+      let key = apiKey;
 
       if (!key) {
-        if (!process.stdin.isTTY) {
-          exitWithError("missing_api_key", "API key required. Pass it as an argument, or set WORKFLOWY_API_KEY.");
+        if (process.stdin.isTTY) {
+          key = await prompt("API key: ");
+        } else {
+          key = process.env.WORKFLOWY_API_KEY;
+          if (!key) {
+            exitWithError("missing_api_key", "API key required. Pass it as an argument, or set WORKFLOWY_API_KEY.");
+          }
         }
-        key = await prompt("API key: ");
       }
 
       if (!key?.trim()) {
