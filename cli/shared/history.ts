@@ -1,3 +1,4 @@
+import { loadConfig } from "./config.ts";
 import { getMeta, setMeta } from "./cache.ts";
 
 export interface HistoryEntry {
@@ -9,8 +10,13 @@ export interface HistoryEntry {
 
 const MAX_ENTRIES = 100;
 
+function getHistoryKey(): string {
+  const account = loadConfig().activeAccount || "default";
+  return `access_history:${account}`;
+}
+
 export function getAccessHistory(): HistoryEntry[] {
-  const raw = getMeta("access_history");
+  const raw = getMeta(getHistoryKey());
   if (!raw) return [];
   try {
     return JSON.parse(raw) as HistoryEntry[];
@@ -33,5 +39,5 @@ export function recordAccess(entry: Omit<HistoryEntry, "accessed_at">): void {
     filtered.length = MAX_ENTRIES;
   }
 
-  setMeta("access_history", JSON.stringify(filtered));
+  setMeta(getHistoryKey(), JSON.stringify(filtered));
 }

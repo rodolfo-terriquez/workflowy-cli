@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
 import { requireToken, loadConfig } from "../shared/config.ts";
 import { getCacheNodeCount, getCacheAgeSeconds, isCacheStale, markTargetDirty, getNodeById } from "../shared/cache.ts";
+import { parseLlmDocResponse } from "../shared/nodes.ts";
 import { isDirectId, findByNameOrPath } from "../shared/path.ts";
 import { formatJson } from "../output/json.ts";
 import { isAgentMode } from "../agent.ts";
@@ -22,9 +23,7 @@ export function registerNodeDelete(program: Command): void {
         const api = new WorkflowyAPI(token);
 
         const nodeId = resolveNodeArg(nodeIdOrPath);
-
-        const cached = getCacheNodeCount() > 0 ? getNodeById(nodeId) : null;
-        const parentId = cached?.parent_id ?? nodeId;
+        const parentId = await resolveDeleteRootId(api, nodeId);
 
         await api.readDoc(parentId, 1);
         await api.editDoc(parentId, [{ op: "delete", ref: nodeId }]);
@@ -53,6 +52,21 @@ export function registerNodeDelete(program: Command): void {
         }
       }
     );
+}
+
+async function resolveDeleteRootId(api: WorkflowyAPI, nodeId: string): Promise<string> {
+  const cached = getCacheNodeCount() > 0 ? getNodeById(nodeId) : null;
+  if (cached?.parent_id) return cached.parent_id;
+
+  const raw = await api.readDoc(nodeId, 0);
+  const { node, ancestors } = parseLlmDocResponse(raw as Record<string, unknown>);
+  const parentId = ancestors.length > 0 ? ancestors[ancestors.length - 1]!.id : null;
+
+  if (!parentId) {
+    exitWithError("invalid_target", `Node "${nodeId}" cannot be deleted from the tree root`, "Choose a non-root node.");
+  }
+
+  return parentId;
 }
 
 function resolveNodeArg(input: string): string {

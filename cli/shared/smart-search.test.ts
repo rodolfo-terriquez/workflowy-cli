@@ -4,13 +4,16 @@ import { tmpdir } from "os";
 import { join } from "path";
 
 const originalHome = process.env.HOME;
+const originalConfigDir = process.env.WORKFLOWY_CONFIG_DIR;
 const testHome = mkdtempSync(join(tmpdir(), "workflowy-cli-smart-search-"));
+const testConfigDir = join(testHome, ".workflowy");
 
 let cacheModule: typeof import("./cache.ts");
 let smartSearchModule: typeof import("./smart-search.ts");
 
 beforeAll(async () => {
   process.env.HOME = testHome;
+  process.env.WORKFLOWY_CONFIG_DIR = testConfigDir;
   cacheModule = await import("./cache.ts");
   smartSearchModule = await import("./smart-search.ts");
 });
@@ -22,6 +25,12 @@ afterAll(() => {
     delete process.env.HOME;
   } else {
     process.env.HOME = originalHome;
+  }
+
+  if (originalConfigDir === undefined) {
+    delete process.env.WORKFLOWY_CONFIG_DIR;
+  } else {
+    process.env.WORKFLOWY_CONFIG_DIR = originalConfigDir;
   }
 
   rmSync(testHome, { recursive: true, force: true });

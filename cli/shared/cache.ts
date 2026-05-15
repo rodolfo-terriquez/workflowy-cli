@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { getDbPath } from "./config.ts";
+import { getDbPath, loadConfig } from "./config.ts";
 import { cleanHtml } from "./nodes.ts";
 
 let _db: Database | null = null;
@@ -18,6 +18,35 @@ export function resetCacheDb(): void {
     _db.close(false);
     _db = null;
   }
+}
+
+function getActiveAccountName(): string {
+  return loadConfig().activeAccount || "default";
+}
+
+function getScopedMetaKey(key: string, account = getActiveAccountName()): string {
+  return `account:${account}:${key}`;
+}
+
+function getScopedMeta(key: string, account = getActiveAccountName()): string | null {
+  return getMeta(getScopedMetaKey(key, account));
+}
+
+function setScopedMeta(key: string, value: string, account = getActiveAccountName()): void {
+  setMeta(getScopedMetaKey(key, account), value);
+}
+
+function deleteMeta(key: string): void {
+  const db = getCacheDb();
+  db.run("DELETE FROM cache_meta WHERE key = ?", [key]);
+}
+
+function getCacheAccount(): string | null {
+  return getMeta("cache_account");
+}
+
+function isCacheCurrentAccount(): boolean {
+  return getCacheAccount() === getActiveAccountName();
 }
 
 function initCacheSchema(db: Database): void {
@@ -79,7 +108,8 @@ export function setMeta(key: string, value: string): void {
 }
 
 export function getLastSyncedAt(): number | null {
-  const val = getMeta("last_synced_at");
+  if (!isCacheCurrentAccount()) return null;
+  const val = getScopedMeta("last_synced_at");
   return val ? Number(val) : null;
 }
 
@@ -96,6 +126,11 @@ export function isCacheStale(thresholdSeconds = 300): boolean {
 }
 
 export function getCacheNodeCount(): number {
+  if (!isCacheCurrentAccount()) return 0;
+
+  const cachedCount = getScopedMeta("node_count");
+  if (cachedCount !== null) return Number(cachedCount);
+
   const db = getCacheDb();
   const row = db.query("SELECT COUNT(*) as cnt FROM nodes").get() as { cnt: number };
   return row.cnt;
@@ -117,6 +152,8 @@ export interface CachedNode {
 }
 
 export function getNodeById(id: string): CachedNode | null {
+  if (!isCacheCurrentAccount()) return null;
+
   const db = getCacheDb();
   const row = db.query("SELECT * FROM nodes WHERE id = ?").get(id) as CachedNode | null;
   if (row) return row;
@@ -136,11 +173,11 @@ export function getNodeById(id: string): CachedNode | null {
 // via readDoc hex tags and store it in cache_meta.
 
 export function getTargetUuid(targetKey: string): string | null {
-  return getMeta(`target:${targetKey}`);
+  return getScopedMeta(`target:${targetKey}`);
 }
 
 export function setTargetUuid(targetKey: string, uuid: string): void {
-  setMeta(`target:${targetKey}`, uuid);
+  setScopedMeta(`target:${targetKey}`, uuid);
 }
 
 // --- Dirty flags (post-write invalidation) ---
@@ -148,24 +185,25 @@ export function setTargetUuid(targetKey: string, uuid: string): void {
 // target automatically falls back to live API.
 
 export function markTargetDirty(targetKey: string): void {
-  setMeta(`dirty:${targetKey}`, String(Date.now()));
+  setScopedMeta(`dirty:${targetKey}`, String(Date.now()));
 }
 
 export function isTargetDirty(targetKey: string): boolean {
-  return getMeta(`dirty:${targetKey}`) !== null;
+  return getScopedMeta(`dirty:${targetKey}`) !== null;
 }
 
 export function clearTargetDirty(targetKey: string): void {
-  const db = getCacheDb();
-  db.run("DELETE FROM cache_meta WHERE key = ?", [`dirty:${targetKey}`]);
+  deleteMeta(getScopedMetaKey(`dirty:${targetKey}`));
 }
 
 export function clearAllDirtyFlags(): void {
   const db = getCacheDb();
-  db.run("DELETE FROM cache_meta WHERE key LIKE 'dirty:%'");
+  db.run("DELETE FROM cache_meta WHERE key LIKE ?", [`${getScopedMetaKey("dirty:")}%`]);
 }
 
 export function getChildren(parentId: string | null): CachedNode[] {
+  if (!isCacheCurrentAccount()) return [];
+
   const db = getCacheDb();
   if (parentId === null) {
     return db.query("SELECT * FROM nodes WHERE parent_id IS NULL ORDER BY priority, name").all() as CachedNode[];
@@ -206,6 +244,8 @@ export interface SearchResult extends CachedNode {
 }
 
 export function searchNodes(query: string, limit = 20): SearchResult[] {
+  if (!isCacheCurrentAccount()) return [];
+
   const db = getCacheDb();
 
   const ftsQuery = query
@@ -233,6 +273,7 @@ export function searchNodes(query: string, limit = 20): SearchResult[] {
 
 export function searchNodesByTrigram(matchQuery: string, limit = 20): SearchResult[] {
   if (!matchQuery.trim()) return [];
+  if (!isCacheCurrentAccount()) return [];
 
   const db = getCacheDb();
 
@@ -271,6 +312,7 @@ export function replaceAllNodes(
 ): { nodeCount: number; syncedAt: number } {
   const db = getCacheDb();
   const syncedAt = Date.now();
+  const account = getActiveAccountName();
 
   const txn = db.transaction(() => {
     db.run("DELETE FROM nodes");
@@ -308,8 +350,9 @@ export function replaceAllNodes(
       // Trigram index is optional.
     }
 
-    setMeta("last_synced_at", String(syncedAt));
-    setMeta("node_count", String(nodes.length));
+    setMeta("cache_account", account);
+    setScopedMeta("last_synced_at", String(syncedAt), account);
+    setScopedMeta("node_count", String(nodes.length), account);
   });
 
   txn();

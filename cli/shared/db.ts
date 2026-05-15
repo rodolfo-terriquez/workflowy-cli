@@ -12,15 +12,26 @@ export function getDb(): Database {
   return _db;
 }
 
+export function resetDb(): void {
+  if (_db) {
+    _db.close(false);
+    _db = null;
+  }
+}
+
 function initSchema(db: Database): void {
+  migrateLegacyBookmarksSchema(db);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS bookmarks (
-      id TEXT PRIMARY KEY,
+      id TEXT NOT NULL,
       name TEXT NOT NULL,
       node_id TEXT NOT NULL,
       account TEXT NOT NULL,
-      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      PRIMARY KEY (account, id)
     );
+    CREATE INDEX IF NOT EXISTS idx_bookmarks_account_updated_at ON bookmarks(account, updated_at);
 
     CREATE TABLE IF NOT EXISTS proposals (
       id TEXT PRIMARY KEY,
@@ -32,6 +43,40 @@ function initSchema(db: Database): void {
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
   `);
+}
+
+function migrateLegacyBookmarksSchema(db: Database): void {
+  const columns = db.query("PRAGMA table_info(bookmarks)").all() as Array<{ name: string; pk: number }>;
+  if (columns.length === 0) return;
+
+  const idColumn = columns.find((column) => column.name === "id");
+  const accountColumn = columns.find((column) => column.name === "account");
+  const hasCompositePrimaryKey = (idColumn?.pk ?? 0) > 0 && (accountColumn?.pk ?? 0) > 0;
+
+  if (hasCompositePrimaryKey) return;
+
+  const txn = db.transaction(() => {
+    db.exec("ALTER TABLE bookmarks RENAME TO bookmarks_legacy");
+    db.exec(`
+      CREATE TABLE bookmarks (
+        id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        node_id TEXT NOT NULL,
+        account TEXT NOT NULL,
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        PRIMARY KEY (account, id)
+      );
+      CREATE INDEX idx_bookmarks_account_updated_at ON bookmarks(account, updated_at);
+    `);
+    db.exec(`
+      INSERT OR REPLACE INTO bookmarks (id, name, node_id, account, updated_at)
+      SELECT id, name, node_id, account, updated_at
+      FROM bookmarks_legacy
+    `);
+    db.exec("DROP TABLE bookmarks_legacy");
+  });
+
+  txn();
 }
 
 export function getCachedBookmarks(

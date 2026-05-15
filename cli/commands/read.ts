@@ -167,6 +167,12 @@ function readFromCache(
 
   const rootNode = getNodeById(nodeId);
   if (!rootNode) {
+    const msg = `Target "${targetStr}" is not available in the current account cache`;
+    if (useJson || isAgentMode()) {
+      console.log(JSON.stringify({ error: { code: "node_not_found", message: msg, hint: "Run `wf cache:sync` or use `wf node:read --live`." } }, null, 2));
+    } else {
+      console.error(`\n  ${msg}. Try ${chalk.cyan("wf cache:sync")} or ${chalk.cyan("wf node:read --live")}.\n`);
+    }
     process.exit(1);
     return;
   }

@@ -21,19 +21,24 @@ export interface WFConfig {
   [key: string]: unknown;
 }
 
-const CONFIG_DIR = join(homedir(), ".workflowy");
-const CONFIG_PATH = join(CONFIG_DIR, "config.json");
-const DB_DIR = join(CONFIG_DIR, "db");
+function resolveConfigDir(): string {
+  return process.env.WORKFLOWY_CONFIG_DIR || join(homedir(), ".workflowy");
+}
+
+function getConfigPath(): string {
+  return join(resolveConfigDir(), "config.json");
+}
 
 export function getConfigDir(): string {
-  return CONFIG_DIR;
+  return resolveConfigDir();
 }
 
 export function getDbDir(): string {
-  if (!existsSync(DB_DIR)) {
-    mkdirSync(DB_DIR, { recursive: true });
+  const dbDir = join(resolveConfigDir(), "db");
+  if (!existsSync(dbDir)) {
+    mkdirSync(dbDir, { recursive: true });
   }
-  return DB_DIR;
+  return dbDir;
 }
 
 export function getDbPath(): string {
@@ -41,18 +46,21 @@ export function getDbPath(): string {
 }
 
 export function loadConfig(): WFConfig {
-  if (!existsSync(CONFIG_PATH)) {
+  const configPath = getConfigPath();
+  if (!existsSync(configPath)) {
     return { activeAccount: "default", accounts: {} };
   }
-  const raw = readFileSync(CONFIG_PATH, "utf-8");
+  const raw = readFileSync(configPath, "utf-8");
   return JSON.parse(raw) as WFConfig;
 }
 
 export function saveConfig(config: WFConfig): void {
-  if (!existsSync(CONFIG_DIR)) {
-    mkdirSync(CONFIG_DIR, { recursive: true });
+  const configDir = resolveConfigDir();
+  const configPath = getConfigPath();
+  if (!existsSync(configDir)) {
+    mkdirSync(configDir, { recursive: true });
   }
-  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+  writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 }
 
 export function getActiveAccount(config: WFConfig): AccountConfig | null {
@@ -118,5 +126,5 @@ export function setConfigValue(key: string, value: string): void {
 }
 
 export function getPendingProposalPath(): string {
-  return join(CONFIG_DIR, "pending-proposal.json");
+  return join(resolveConfigDir(), "pending-proposal.json");
 }
