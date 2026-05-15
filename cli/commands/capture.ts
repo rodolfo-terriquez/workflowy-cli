@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
 import { requireToken, loadConfig } from "../shared/config.ts";
 import { resolveTarget } from "../targets.ts";
+import { getCacheAgeSeconds, isCacheStale, markTargetDirty } from "../shared/cache.ts";
 import { formatJson } from "../output/json.ts";
 import { isAgentMode } from "../agent.ts";
 
@@ -30,22 +31,24 @@ export function registerCapture(program: Command): void {
           },
         ]);
 
+        markTargetDirty(resolved.id);
         const useJson = opts.format === "json" || isAgentMode();
 
         if (useJson) {
           const config = loadConfig();
-          console.log(
-            formatJson({
-              meta: {
-                command: "capture",
-                target: opts.to,
-                resolved_id: resolved.id,
-                timestamp: new Date().toISOString(),
-                account: config.activeAccount,
-              },
-              message: `Captured to ${resolved.label}`,
-            })
-          );
+          const meta: Record<string, unknown> = {
+            command: "capture",
+            target: opts.to,
+            resolved_id: resolved.id,
+            timestamp: new Date().toISOString(),
+            account: config.activeAccount,
+          };
+          const cacheAge = getCacheAgeSeconds();
+          if (cacheAge !== null) {
+            meta.cache_age_seconds = cacheAge;
+            meta.cache_stale = isCacheStale();
+          }
+          console.log(formatJson({ meta, message: `Captured to ${resolved.label}` }));
         } else {
           console.log(
             `\n  ${chalk.green("✓")} Captured to ${chalk.cyan(resolved.label)}: ${text}\n`

@@ -1,22 +1,15 @@
 import type { FlatNode } from "../shared/nodes.ts";
 
 export interface JsonOutput {
-  meta?: {
-    command: string;
-    target?: string;
-    resolved_id?: string;
-    timestamp: string;
-    account?: string;
-  };
+  meta?: Record<string, unknown>;
   node?: FlatNode;
-  nodes?: FlatNode[];
+  nodes?: unknown[];
   children?: FlatNode[];
   message?: string;
-  proposal?: {
-    id: string;
-    instructions: string;
-    preview: string;
-  };
+  proposal?: Record<string, unknown>;
+  path?: string;
+  error?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 export function formatJson(data: JsonOutput): string {

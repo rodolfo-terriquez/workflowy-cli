@@ -13,8 +13,14 @@ import { registerMove } from "./commands/move.ts";
 import { registerComplete } from "./commands/complete.ts";
 import { registerExport } from "./commands/export.ts";
 import { registerPropose } from "./commands/propose.ts";
+import { registerSync } from "./commands/sync.ts";
+import { registerFind } from "./commands/find.ts";
+import { registerContext } from "./commands/context.ts";
+import { registerBatch } from "./commands/batch.ts";
+import { registerConfig } from "./commands/config.ts";
+import { registerDiff } from "./commands/diff.ts";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 const LOGO = `
 ${chalk.hex("#44b8f7")("    ╭──────────────────────────╮")}
@@ -65,6 +71,12 @@ registerMove(program);
 registerComplete(program);
 registerExport(program);
 registerPropose(program);
+registerSync(program);
+registerFind(program);
+registerContext(program);
+registerBatch(program);
+registerConfig(program);
+registerDiff(program);
 
 if (process.argv.length <= 2) {
   showWelcome();
