@@ -1,10 +1,9 @@
 # wf — WorkFlowy CLI
 
 ```
-                    ___  __
-   _    _____  ____/ /_/ _/ /___      ____  __
-  | |/|/ / _ \/ __/  '_/ _/ / _ \    / _  |/ /
-  |__,__/\___/_/ /_/\_/_/ /_/\___/  /___,_/_/
+  ╦ ╦╔═╗╦═╗╦╔═╔═╗╦  ╔═╗╦ ╦╦ ╦
+  ║║║║ ║╠╦╝╠╩╗╠╣ ║  ║ ║║║║╚╦╝
+  ╚╩╝╚═╝╩╚═╩ ╩╚  ╩═╝╚═╝╚╩╝ ╩
 ```
 
 Command-line interface for WorkFlowy — built for agents, automations, and power users.
