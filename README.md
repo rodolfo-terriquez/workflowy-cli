@@ -1,284 +1,444 @@
-# wf — Workflowy CLI
+# wf — WorkFlowy CLI
 
-```
+```text
   ╦ ╦╔═╗╦═╗╦╔═╔═╗╦  ╔═╗╦ ╦╦ ╦
   ║║║║ ║╠╦╝╠╩╗╠╣ ║  ║ ║║║║╚╦╝
   ╚╩╝╚═╝╩╚═╩ ╩╚  ╩═╝╚═╝╚╩╝ ╩
 ```
 
-Command-line interface for [Workflowy](https://Workflowy.com) — built for agents, automations, and power users.
+Command-line interface for [WorkFlowy](https://workflowy.com) built for agents, automations, and power users.
 
-Reads are instant (~60ms from local cache), searches are unlimited (local FTS, no rate limits), and writes go through a safe propose/apply flow powered by an LLM. Designed so coding agents can manage a Workflowy outline without burning tokens on round-trips.
+This project is WorkFlowy-native:
+
+- everything is a node in a single tree
+- `@targets` are WorkFlowy bookmarks or built-in locations
+- reads are cache-first through local SQLite
+- writes go through the WorkFlowy APIs
+- agent mode returns machine-readable JSON and structured errors
+
+## Status
+
+Current version: `3.0.0`
+
+Implemented today:
+
+- cache-first reads, search, path lookup, and subtree context
+- smart search with FTS, fuzzy fallback, and optional AI reranking
+- todos, tags, history, templates, bulk operations
+- REPL shell, shell completions, clipboard copy support, command aliases
+- multi-account config
+- watch daemon, webhooks, workflows, MCP server
+- compiled binary build via Bun
 
 ## Install
 
-```bash
-# From source (requires Bun)
-bun install
-bun run build        # → dist/wf
+Requires [Bun](https://bun.sh).
 
-# Or run directly
-bun run cli/wf.ts
+```bash
+bun install
+bun run build
+```
+
+That produces a standalone binary at `dist/wf`.
+
+You can also run it directly from source:
+
+```bash
+bun run cli/wf.ts --help
 ```
 
 ## Quick Start
 
 ```bash
-# 1. Authenticate with your Workflowy API key
+# authenticate
 wf login
 
-# 2. Sync your outline to local cache
-wf sync
+# sync the local cache
+wf cache:sync
 
-# 3. You're ready
-wf read @inbox
+# inspect your tree
+wf node:read @inbox
+wf search "campaign"
+wf targets
 ```
 
-## How It Works
+## Command Surface
 
-The CLI talks to two Workflowy APIs:
-
-- **Standard API** (`workflowy.com/api/v1/`) — used for full-tree export, target discovery, and sync
-- **LLM Doc API** (`beta.workflowy.com/api/llm/doc/`) — used for efficient reads and all write operations
-
-On first run, `wf sync` pulls your entire outline into a local SQLite database with FTS5 full-text search. After that, most commands read from cache and only hit the API when writing or when you explicitly pass `--live`.
-
-```
-┌─────────────┐       ┌──────────────────┐       ┌──────────────┐
-│  wf read    │──────▶│  Local SQLite    │       │  Workflowy   │
-│  wf search  │       │  (~60ms)         │       │  API         │
-│  wf find    │       └──────────────────┘       │              │
-│  wf context │                                  │              │
-├─────────────┤       ┌──────────────────┐       │              │
-│  wf capture │──────▶│  LLM Doc API     │──────▶│              │
-│  wf add     │       │  (write)         │       │              │
-│  wf move    │       └──────────────────┘       │              │
-│  wf complete│                                  │              │
-├─────────────┤       ┌──────────────────┐       │              │
-│  wf sync    │──────▶│  v1 Export API   │◀──────│              │
-│  wf diff    │       │  (full tree)     │       └──────────────┘
-└─────────────┘       └──────────────────┘
-```
-
-After any write, the affected target is marked dirty — the next read automatically goes live to avoid showing stale data.
-
-## Commands
-
-### Read & Navigate
-
-| Command | Description |
-|---------|-------------|
-| `wf read [target]` | Read a node and its children (cache-first, ~60ms) |
-| `wf read [target] --live` | Force a live API call, bypass cache |
-| `wf read [target] --depth 5` | Control how many levels deep to read |
-| `wf search <query>` | Full-text search across all nodes (local FTS) |
-| `wf search <query> --live` | Search via API instead of cache |
-| `wf find <name-or-path>` | Find nodes by name or `@target/path` traversal |
-| `wf context <target>` | Show a node with its ancestors, siblings, and children |
-| `wf targets` | List all available @targets (system + shortcuts) |
-| `wf export <target>` | Export a subtree (outline, JSON, or markdown) |
-
-### Write
-
-| Command | Description |
-|---------|-------------|
-| `wf capture <text>` | Quick-add to inbox (or `--to @target`) |
-| `wf add <target> <text>` | Add a child node with `--type todo\|h1\|h2\|h3` |
-| `wf move <node> <target>` | Move a node to a different parent |
-| `wf complete <node>` | Mark a todo as complete (`--undo` to uncheck) |
-| `wf batch` | Execute a JSON array of operations from stdin |
-
-### Sync & Diff
-
-| Command | Description |
-|---------|-------------|
-| `wf sync` | Pull full tree from API into local cache |
-| `wf sync --status` | Show last sync time and node count |
-| `wf sync --watch` | Background daemon, re-syncs every 5 minutes |
-| `wf sync --stop` | Stop the background sync daemon |
-| `wf diff` | What changed since last sync (fetches fresh, compares to cache) |
-| `wf diff --since 30m` | Only show changes within a time window |
-
-### Propose & Apply (LLM-powered)
-
-Safe write gate for autonomous agents. `wf propose` sends an instruction + outline context to an LLM, which returns a structured diff. Review it, then apply or reject.
-
-| Command | Description |
-|---------|-------------|
-| `wf propose <instruction>` | Generate a structured diff via LLM |
-| `wf preview` | Re-show the pending proposal |
-| `wf apply` | Execute all operations in the pending proposal |
-| `wf reject` | Discard the pending proposal |
+### Node commands
 
 ```bash
-$ wf propose "move uncompleted todos from @today to @tomorrow"
-
-  Proposal 4f8a1bc03e21 — "move uncompleted todos from @today to @tomorrow"
-
-  Move 3 uncompleted todos from Today to Tomorrow
-
-  Changes (3 operations):
-
-  ├─ move  "Review Q2 numbers"     Today → Tomorrow
-  ├─ move  "Record video"          Today → Tomorrow
-  └─ move  "Draft tech summary"    Today → Tomorrow
-
-  Run wf apply to execute, or wf reject to discard.
+wf node:read [target]
+wf node:add <target> <text>
+wf node:move <node> <target>
+wf node:complete <node>
+wf node:delete <node>
+wf node:find <path-or-name>
+wf node:context <target>
+wf node:todos
+wf node:bulk complete|delete|move
+wf node:template list|save|apply|delete
+wf node:export <target>
 ```
 
-### Config
-
-| Command | Description |
-|---------|-------------|
-| `wf config get <key>` | Read a config value (dotted path) |
-| `wf config set <key> <value>` | Write a config value |
-| `wf login` | Authenticate with a Workflowy API key |
-
-## @Targets & Path Syntax
-
-Named targets resolve bookmarks and built-in Workflowy locations so you don't need raw node IDs:
-
-| Target | Resolves to |
-|--------|-------------|
-| `@inbox` | Your Inbox |
-| `@today` | Today's date node |
-| `@tomorrow` | Tomorrow's date node |
-| `@calendar` | Calendar root |
-| `@{shortcut}` | Any saved Workflowy shortcut |
-
-Any command that accepts a target also accepts **path syntax** — traverse into children by name:
+### Top-level commands
 
 ```bash
-wf read "@daily/2026/May/May 14"
-wf complete "@inbox/Buy groceries"
-wf move "@today/Fix bug" @inbox
-wf add "@today/Pay affiliates" "Calculate amounts" --type todo
+wf search <query>
+wf tags
+wf targets
+wf history
+wf batch
+wf mcp
+wf completions install
+wf doctor
+wf login
 ```
 
-If a path matches multiple nodes, the CLI errors with a candidate list. In agent mode, it always errors (never prompts).
-
-Bare node IDs (UUIDs or 12-hex tags from the LLM doc API) are accepted everywhere too:
+### Cache, AI, automation, and account commands
 
 ```bash
-wf read d1747b2b-08da-cf4f-a239-958a88a075ac
-wf context 958a88a075ac
+wf cache:sync
+wf cache:diff
+
+wf ai:propose <instruction>
+wf ai:preview [id]
+wf ai:apply [id]
+wf ai:reject [id]
+wf ai:list
+
+wf watch:start
+wf watch:stop
+wf watch:status
+
+wf webhook:create
+wf webhook:list
+wf webhook:delete <id>
+wf webhook:test <id>
+
+wf workflow:list
+wf workflow:create <name>
+wf workflow:run <name>
+
+wf config:get <key>
+wf config:set <key> <value>
+wf config:alias set|list|remove
+
+wf account:list
+wf account:switch <name>
+wf account:current
 ```
+
+## Common Usage
+
+### Read and navigate
+
+```bash
+wf node:read @today --depth 4
+wf node:read "@inbox/Projects" --live
+wf node:find "campaign 94"
+wf node:context @today
+wf node:export @today --format markdown
+```
+
+### Search
+
+```bash
+wf search "campaign"
+wf search "campain 94"
+wf search "pricing bug" --smart
+wf search "q2" --format json
+```
+
+Search behavior:
+
+- tier 1: SQLite FTS
+- tier 2: fuzzy fallback
+- tier 3: optional AI reranking with `--smart`
+
+### Todos, tags, and history
+
+```bash
+wf node:todos --target @today
+wf node:todos --completed --since 7d
+wf tags --target @today
+wf history --limit 50
+```
+
+### Write operations
+
+```bash
+wf node:add @inbox "Draft Q3 plan" --type todo
+wf node:move "@today/Fix release notes" @inbox
+wf node:complete "@inbox/Follow up with vendor"
+wf node:delete "Old scratch item"
+```
+
+### Templates and bulk operations
+
+```bash
+wf node:template save standup --from @today
+wf node:template apply standup --to @inbox
+
+wf node:bulk complete --filter "type:todo completed:false" --target @today
+wf node:bulk move --filter "tag:#archive" --to @inbox --dry-run
+```
+
+### Batch mode
+
+`wf batch` reads a JSON array from stdin and executes grouped operations.
+
+```bash
+echo '[
+  {"op":"add","text":"Item 1","to":"@inbox"},
+  {"op":"complete","ref":"abc123def456"},
+  {"op":"move","ref":"def456abc123","to":"@today"}
+]' | wf batch
+```
+
+## Targets and Paths
+
+Commands that accept a target support:
+
+- built-in locations like `@inbox`, `@today`, `@tomorrow`, `@calendar`, `@next-week`
+- user bookmarks returned by `wf targets`
+- raw node IDs
+- path traversal such as `@today/Meetings/Launch review`
+
+Examples:
+
+```bash
+wf node:read "@today/Meetings"
+wf node:complete "@inbox/Buy groceries"
+wf node:move "@today/Fix bug" @inbox
+```
+
+## Cache Model
+
+`wf cache:sync` stores a local SQLite copy of your tree and powers fast reads.
+
+```bash
+wf cache:sync
+wf cache:sync --status
+wf cache:sync --watch
+wf cache:sync --stop
+wf cache:diff --since 30m
+```
+
+Most read commands use the cache automatically. `node:read` and `search` can bypass it with `--live`.
+
+## REPL, Completions, and Clipboard
+
+Run `wf` with no arguments to enter the interactive shell.
+
+Features:
+
+- command history
+- tab completion for commands, `@targets`, and common flags
+- alias expansion
+
+```bash
+wf
+wf> node:read @today
+wf> search "campaign"
+wf> exit
+```
+
+Shell completions:
+
+```bash
+wf completions install
+wf completions install --shell zsh
+wf completions install --shell fish
+```
+
+Many output commands also support `--copy`:
+
+```bash
+wf node:read @today --copy
+wf search "launch" --copy
+wf tags --copy
+```
+
+## AI Commands
+
+`ai:propose` generates a structured proposal using an LLM. Review it, then apply or reject it.
+
+```bash
+wf ai:propose "move uncompleted todos from @today to @tomorrow"
+wf ai:list
+wf ai:preview
+wf ai:apply
+wf ai:reject
+```
+
+LLM config:
+
+```bash
+wf config:set llm.apiKey <openrouter-key>
+wf config:set llm.model google/gemini-flash-2.5
+```
+
+## Automation and Integration
+
+### Watch daemon
+
+```bash
+wf watch:start --interval 2m
+wf watch:status
+wf watch:stop
+```
+
+`watch:start` streams newline-delimited JSON events when running non-interactively.
+
+### Webhooks
+
+```bash
+wf webhook:create --url https://example.com/hook --filter "tag:#urgent"
+wf webhook:list
+wf webhook:test <id>
+```
+
+### Workflows
+
+Workflows are YAML files stored under `~/.workflowy/workflows/`.
+
+```bash
+wf workflow:create daily-review
+wf workflow:list
+wf workflow:run daily-review
+```
+
+### MCP server
+
+```bash
+wf mcp
+wf mcp --port 3399
+```
+
+`wf mcp` supports stdio transport by default and HTTP/SSE when `--port` is provided.
 
 ## Agent Mode
 
-Pass `--agent` or set `WF_AGENT=1` for JSON-only output with a stable schema. Auto-detected when `CI=true` or `TERM=dumb`.
+Use `--agent` for JSON output. Agent mode is also enabled when:
+
+- `WF_AGENT=1`
+- `CI=true`
+- `TERM=dumb`
+
+Examples:
 
 ```bash
-wf read @inbox --agent
+wf node:read @inbox --agent
+wf search "campaign" --agent
+wf node:todos --agent
 ```
 
-Agent mode features:
+Typical response shapes:
 
-- **Stable JSON schema** — `meta`, `node`, `children[]` envelope on every response
-- **Machine-readable errors** — `{ "error": { "code", "message", "hint" } }` with non-zero exit codes
-- **Cache metadata** — `cache_age_seconds` and `cache_stale` in every `meta` block
-- **No colors or interactive prompts** — safe for piping and parsing
+### Read-oriented output
 
 ```json
 {
   "meta": {
-    "command": "read",
-    "target": "@inbox",
-    "source": "cache",
-    "cache_age_seconds": 42,
-    "cache_stale": false
+    "command": "node:read",
+    "wf_version": "3.0.0"
   },
-  "node": { "id": "d1747b...", "name": "📥 Inbox", ... },
-  "children": [ ... ]
+  "node": {},
+  "children": []
 }
 ```
 
-## Batch Operations
+### List/query output
 
-Agents can avoid N separate process invocations by piping a JSON array to `wf batch`:
+```json
+{
+  "meta": {
+    "command": "search",
+    "wf_version": "3.0.0"
+  },
+  "nodes": []
+}
+```
+
+### Write/status output
+
+```json
+{
+  "meta": {
+    "command": "node:add",
+    "wf_version": "3.0.0"
+  },
+  "message": "..."
+}
+```
+
+### Errors
+
+```json
+{
+  "error": {
+    "code": "node_not_found",
+    "message": "Node not found",
+    "hint": "Run `wf cache:sync` first."
+  }
+}
+```
+
+## Configuration
+
+Config is stored under `~/.workflowy/config.json`.
+
+Common keys:
 
 ```bash
-echo '[
-  {"op": "capture", "text": "Item 1", "to": "@inbox"},
-  {"op": "capture", "text": "Item 2", "to": "@today"},
-  {"op": "complete", "ref": "abc123def456"}
-]' | wf batch
+wf config:get llm.model
+wf config:set llm.model google/gemini-flash-2.5
+wf config:set llm.apiKey <key>
 ```
 
-Operations are grouped by target and executed in as few API calls as possible.
-
-## LLM Configuration
-
-`wf propose` uses [OpenRouter](https://openrouter.ai) to call an LLM. Configure your API key and preferred model:
+Aliases:
 
 ```bash
-wf config set llm.apiKey sk-or-v1-...
-wf config set llm.model google/gemini-flash-2.5    # default
+wf config:alias set today-todos "node:todos --target @today"
+wf config:alias list
+wf config:alias remove today-todos
 ```
 
-Override per-call with `--model`:
+Accounts:
 
 ```bash
-wf propose "archive completed todos" --model anthropic/claude-sonnet-4
+wf account:list
+wf account:switch work
+wf account:current
 ```
 
-The model ID is an OpenRouter-style string, so any provider's models work. Default is `google/gemini-flash-2.5` — fast, cheap, good at structured output.
-
-## Build
+## Development
 
 ```bash
-bun run build    # Compiles standalone binary → dist/wf
+bun install
+bun run typecheck
+bun test cli/shared/smart-search.test.ts cli/commands/mcp.test.ts
+bun run build
 ```
 
-## Architecture
+Helpful local checks:
 
-```
-Workflowy-cli/
-├── cli/
-│   ├── wf.ts                  # Entry point, command registration
-│   ├── agent.ts               # Agent mode detection
-│   ├── targets.ts             # @target resolution
-│   ├── commands/
-│   │   ├── login.ts           # Authentication
-│   │   ├── read.ts            # Cache-first read with --live fallback
-│   │   ├── search.ts          # Local FTS with --live fallback
-│   │   ├── find.ts            # Name/path lookup from cache
-│   │   ├── context.ts         # Node + surroundings
-│   │   ├── capture.ts         # Quick-add
-│   │   ├── add.ts             # Structured add
-│   │   ├── move.ts            # Cache-optimized move (1 API call)
-│   │   ├── complete.ts        # Toggle completion
-│   │   ├── export.ts          # Subtree export
-│   │   ├── sync.ts            # Full sync + daemon
-│   │   ├── diff.ts            # Change detection
-│   │   ├── batch.ts           # Stdin batch operations
-│   │   ├── propose.ts         # LLM-powered propose/apply/reject
-│   │   ├── config.ts          # Config get/set
-│   │   └── targets.ts         # List targets
-│   ├── shared/
-│   │   ├── api.ts             # Workflowy API client (v1 + LLM doc)
-│   │   ├── cache.ts           # SQLite cache (nodes, FTS, meta, dirty flags)
-│   │   ├── config.ts          # ~/.workflowy/config.json management
-│   │   ├── db.ts              # Legacy DB (bookmarks, proposals)
-│   │   ├── errors.ts          # Machine-readable error output
-│   │   ├── nodes.ts           # Node parsing, HTML cleaning, normalization
-│   │   ├── path.ts            # Path resolution (@target/path/to/node)
-│   │   └── propose.ts         # LLM call + context gathering
-│   └── output/
-│       ├── compact.ts         # Outline formatter (tree connectors)
-│       └── json.ts            # JSON formatter
-└── dist/wf                    # Compiled binary
+```bash
+./dist/wf --help
+./dist/wf doctor
+./dist/wf cache:sync --status --agent
 ```
 
-**Local data** (stored in `~/.Workflowy/`):
+## Project Layout
 
-| File | Purpose |
-|------|---------|
-| `config.json` | API key, active account, LLM settings |
-| `db/wf.sqlite` | Node cache, FTS index, bookmarks, target mappings |
-| `pending-proposal.json` | Current proposal awaiting apply/reject |
-| `sync.pid` | PID of background sync daemon |
-
-## License
-
-MIT
+```text
+cli/
+  wf.ts                 entry point and command registration
+  agent.ts              agent-mode detection
+  targets.ts            @target resolution
+  commands/             command implementations
+  shared/               cache, config, clipboard, history, REPL, API helpers
+  output/               JSON and outline formatters
+dist/
+  wf                    compiled binary after bun run build
+```
