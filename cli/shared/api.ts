@@ -48,6 +48,13 @@ export interface LlmDocOperation {
   };
 }
 
+const FULL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-([0-9a-f]{12})$/i;
+
+export function toLlmDocId(id: string): string {
+  const match = id.match(FULL_UUID_RE);
+  return match?.[1] ?? id;
+}
+
 export class WorkflowyAPI {
   private token: string;
 
@@ -142,10 +149,18 @@ export class WorkflowyAPI {
     root: string,
     operations: LlmDocOperation[]
   ): Promise<Record<string, unknown>> {
+    const normalizedRoot = toLlmDocId(root);
+    const normalizedOperations = operations.map((operation) => ({
+      ...operation,
+      under: operation.under ? toLlmDocId(operation.under) : undefined,
+      after: operation.after ? toLlmDocId(operation.after) : undefined,
+      ref: operation.ref ? toLlmDocId(operation.ref) : undefined,
+    }));
+
     const res = await fetch(`${LLM_DOC_BASE}/edit`, {
       method: "POST",
       headers: this.headers(true),
-      body: JSON.stringify({ root, operations }),
+      body: JSON.stringify({ root: normalizedRoot, operations: normalizedOperations }),
     });
 
     if (!res.ok) {

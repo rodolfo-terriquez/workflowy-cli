@@ -9,14 +9,14 @@ import {
   getLastSyncedAt,
   getCacheNodeCount,
   getCacheAgeSeconds,
-  getNodeById,
+  clearTargetUuid,
   setTargetUuid,
   clearAllDirtyFlags,
 } from "../shared/cache.ts";
-import { parseLlmDocResponse } from "../shared/nodes.ts";
 import { isAgentMode } from "../agent.ts";
+import { buildSystemTargetMap } from "../shared/system-targets.ts";
 
-const SYSTEM_TARGETS = ["inbox", "today", "tomorrow", "calendar", "next_week"];
+const SYSTEM_TARGETS = ["inbox", "today", "tomorrow", "calendar", "next_week"] as const;
 
 const PID_PATH = join(getConfigDir(), "sync.pid");
 
@@ -58,7 +58,7 @@ export async function doSync(): Promise<{ nodeCount: number; syncedAt: number }>
   const { nodeCount, syncedAt } = replaceAllNodes(allNodes);
 
   clearAllDirtyFlags();
-  await resolveSystemTargets(api);
+  resolveSystemTargets(allNodes);
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
 
@@ -154,19 +154,17 @@ function stopDaemon(): void {
   console.log(`\n  ${chalk.green("✓")} Sync daemon stopped.\n`);
 }
 
-async function resolveSystemTargets(api: WorkflowyAPI): Promise<void> {
+function resolveSystemTargets(nodes: Awaited<ReturnType<WorkflowyAPI["exportAll"]>>): void {
   for (const target of SYSTEM_TARGETS) {
-    try {
-      const data = await api.readDoc(target, 0);
-      const { node } = parseLlmDocResponse(data);
-      if (node.id) {
-        const cached = getNodeById(node.id);
-        if (cached) {
-          setTargetUuid(target, cached.id);
-        }
-      }
-    } catch {
-      // Some targets may not exist for this account
+    clearTargetUuid(target);
+  }
+
+  const mappings = buildSystemTargetMap(nodes);
+
+  for (const target of SYSTEM_TARGETS) {
+    const mappedId = mappings[target];
+    if (mappedId) {
+      setTargetUuid(target, mappedId);
     }
   }
 }

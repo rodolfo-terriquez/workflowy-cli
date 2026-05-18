@@ -180,6 +180,10 @@ export function setTargetUuid(targetKey: string, uuid: string): void {
   setScopedMeta(`target:${targetKey}`, uuid);
 }
 
+export function clearTargetUuid(targetKey: string): void {
+  deleteMeta(getScopedMetaKey(`target:${targetKey}`));
+}
+
 // --- Dirty flags (post-write invalidation) ---
 // After a write, mark the target dirty. Next cache read for that
 // target automatically falls back to live API.

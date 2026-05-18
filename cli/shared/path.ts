@@ -45,6 +45,20 @@ export function resolveTargetReference(input: string): ResolvedTargetReference |
   }
 
   const resolved = resolveTarget(input);
+  const mappedUuid = getTargetUuid(resolved.id);
+
+  if (mappedUuid) {
+    return {
+      id: mappedUuid,
+      label: input.startsWith("@") ? input : resolved.label,
+      source: resolved.source,
+    };
+  }
+
+  if (resolved.source === "builtin") {
+    return null;
+  }
+
   return {
     id: resolved.id,
     label: input.startsWith("@") ? input : resolved.label,
