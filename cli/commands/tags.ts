@@ -1,11 +1,11 @@
 import type { Command } from "commander";
 import chalk from "chalk";
-import { getCacheDb, getCacheNodeCount, getCacheAgeSeconds, isCacheStale, getTargetUuid } from "../shared/cache.ts";
-import { resolveTarget } from "../targets.ts";
+import { getCacheDb, getCacheNodeCount, getCacheAgeSeconds, isCacheStale } from "../shared/cache.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 import { loadConfig } from "../shared/config.ts";
 import { startOutputCapture, handleCopyFlag } from "../shared/copy-wrapper.ts";
+import { resolveCacheTargetReference } from "../shared/path.ts";
 
 interface TagCount {
   tag: string;
@@ -45,8 +45,10 @@ export function registerTags(program: Command): void {
       let rows: Array<{ name: string; note: string | null }>;
 
       if (opts.target) {
-        const resolved = resolveTarget(opts.target);
-        const uuid = getTargetUuid(resolved.id) ?? resolved.id;
+        const resolved = resolveCacheTargetReference(opts.target);
+        if (!resolved) {
+          exitWithError("node_not_found", `Target "${opts.target}" not found in cache`, "Run `wf cache:sync` to refresh path and subtree lookups");
+        }
         rows = db.query(`
           WITH RECURSIVE subtree(id) AS (
             SELECT id FROM nodes WHERE id = ?
@@ -54,7 +56,7 @@ export function registerTags(program: Command): void {
             SELECT n.id FROM nodes n JOIN subtree s ON n.parent_id = s.id
           )
           SELECT n.name, n.note FROM nodes n JOIN subtree s ON n.id = s.id
-        `).all(uuid) as Array<{ name: string; note: string | null }>;
+        `).all(resolved.id) as Array<{ name: string; note: string | null }>;
       } else {
         rows = db.query("SELECT name, note FROM nodes").all() as Array<{ name: string; note: string | null }>;
       }

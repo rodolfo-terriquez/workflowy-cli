@@ -2,11 +2,13 @@ import type { Command } from "commander";
 import { WorkflowyAPI } from "../shared/api.ts";
 import { requireToken, loadConfig } from "../shared/config.ts";
 import { parseLlmDocResponse, type FlatNode } from "../shared/nodes.ts";
-import { resolveTarget } from "../targets.ts";
 import { formatOutline } from "../output/compact.ts";
 import { formatJson } from "../output/json.ts";
 import { isAgentMode } from "../agent.ts";
 import { startOutputCapture, handleCopyFlag } from "../shared/copy-wrapper.ts";
+import { resolveTargetReference } from "../shared/path.ts";
+import { getCacheNodeCount } from "../shared/cache.ts";
+import { exitWithError } from "../shared/errors.ts";
 
 export function registerExport(program: Command): void {
   program
@@ -28,7 +30,13 @@ export function registerExport(program: Command): void {
 
         const token = requireToken();
         const api = new WorkflowyAPI(token);
-        const resolved = resolveTarget(target);
+        if (target.startsWith("@") && target.includes("/") && getCacheNodeCount() === 0) {
+          exitWithError("cache_empty", "Cache is empty.", "Run `wf cache:sync` first for path-based exports.");
+        }
+        const resolved = resolveTargetReference(target);
+        if (!resolved) {
+          exitWithError("node_not_found", `Target "${target}" could not be resolved`, "Run `wf cache:sync` to refresh path lookups");
+        }
         const depth = opts.depth ?? 5;
 
         const data = await api.readDoc(resolved.id, depth);

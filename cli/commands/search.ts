@@ -1,14 +1,16 @@
 import type { Command } from "commander";
 import chalk from "chalk";
-import { WorkflowyAPI } from "../shared/api.ts";
+import { WorkflowyAPI, type WFNode } from "../shared/api.ts";
 import { requireToken, loadConfig } from "../shared/config.ts";
-import { normalizeNode, cleanHtml, type FlatNode } from "../shared/nodes.ts";
-import { searchNodes, getCacheNodeCount, getCacheAgeSeconds, isCacheStale } from "../shared/cache.ts";
+import { normalizeNode, cleanHtml, parseLlmDocResponse, type FlatNode } from "../shared/nodes.ts";
+import { getCacheNodeCount, getCacheAgeSeconds, isCacheStale } from "../shared/cache.ts";
 import { formatJson } from "../output/json.ts";
 import { formatTsv, formatCsv, type TsvRow } from "../shared/output-formats.ts";
 import { isAgentMode } from "../agent.ts";
 import { tieredSearch, smartSearch, type SmartSearchResult } from "../shared/smart-search.ts";
 import { startOutputCapture, handleCopyFlag } from "../shared/copy-wrapper.ts";
+import { resolveCacheTargetReference, resolveTargetReference } from "../shared/path.ts";
+import { exitWithError } from "../shared/errors.ts";
 
 export function registerSearch(program: Command): void {
   program
@@ -33,11 +35,11 @@ export function registerSearch(program: Command): void {
         const limit = opts.limit ?? 20;
 
         if (useLive) {
-          await searchLive(query, opts.tag, opts.format, limit);
+          await searchLive(query, opts.tag, opts.format, limit, opts.target);
         } else if (opts.smart) {
           await searchSmart(query, opts.tag, opts.format, limit, opts.target);
         } else {
-          searchTiered(query, opts.tag, opts.format, limit);
+          searchTiered(query, opts.tag, opts.format, limit, opts.target);
         }
 
         await handleCopyFlag(!!opts.copy);
@@ -49,19 +51,26 @@ async function searchLive(
   query: string,
   tag?: string,
   format?: string,
-  limit = 20
+  limit = 20,
+  target?: string,
 ): Promise<void> {
   const token = requireToken();
   const api = new WorkflowyAPI(token);
 
   const allNodes = await api.exportAll();
+  const targetId = target ? await resolveLiveSearchTargetId(target, api) : null;
+  const subtreeIds = targetId ? buildLiveSubtreeIds(allNodes, targetId) : null;
   const queryLower = query.toLowerCase();
 
   let results: FlatNode[] = allNodes
     .filter(
-      (n) =>
-        n.name.toLowerCase().includes(queryLower) ||
-        (n.note && n.note.toLowerCase().includes(queryLower))
+      (n) => {
+        if (subtreeIds && !subtreeIds.has(n.id)) return false;
+        return (
+          n.name.toLowerCase().includes(queryLower) ||
+          (!!n.note && n.note.toLowerCase().includes(queryLower))
+        );
+      }
     )
     .slice(0, limit)
     .map((n) => normalizeNode(n));
@@ -73,20 +82,26 @@ async function searchLive(
     );
   }
 
+  const nodeById = new Map(allNodes.map((node) => [node.id, node]));
   outputResults(query, results.map((r) => ({
     id: r.id, name: r.name, note: r.note, line_type: r.type, completed: r.completed ? 1 : 0,
-    parent_id: null, priority: null, created_at: null, modified_at: null, synced_at: 0,
-    parent_path: "", rank: 0, match_type: "fts" as const,
-  })), "live", format);
+    parent_id: nodeById.get(r.id)?.parent_id ?? null, priority: null, created_at: null, modified_at: null, synced_at: 0,
+    parent_path: buildLiveParentPath(nodeById.get(r.id)?.parent_id ?? null, nodeById), rank: 0, match_type: "fts" as const,
+  })), "live", format, target);
 }
 
 function searchTiered(
   query: string,
   tag?: string,
   format?: string,
-  limit = 20
+  limit = 20,
+  target?: string,
 ): void {
-  let results = tieredSearch(query, limit);
+  if (target && !resolveCacheTargetReference(target)) {
+    exitWithError("node_not_found", `Target "${target}" not found in cache`, "Run `wf cache:sync` to refresh path and subtree lookups");
+  }
+
+  let results = tieredSearch(query, limit, target);
 
   if (tag) {
     const t = tag.startsWith("#") ? tag : `#${tag}`;
@@ -95,7 +110,7 @@ function searchTiered(
     );
   }
 
-  outputResults(query, results, "cache", format);
+  outputResults(query, results, "cache", format, target);
 }
 
 async function searchSmart(
@@ -107,6 +122,10 @@ async function searchSmart(
 ): Promise<void> {
   if (!isAgentMode()) process.stdout.write(chalk.dim("  Searching with AI..."));
 
+  if (target && !resolveCacheTargetReference(target)) {
+    exitWithError("node_not_found", `Target "${target}" not found in cache`, "Run `wf cache:sync` to refresh path and subtree lookups");
+  }
+
   let results = await smartSearch(query, limit, target);
 
   if (tag) {
@@ -117,14 +136,15 @@ async function searchSmart(
   }
 
   if (!isAgentMode()) process.stdout.write("\r");
-  outputResults(query, results, "cache+smart", format);
+  outputResults(query, results, "cache+smart", format, target);
 }
 
 function outputResults(
   query: string,
   results: SmartSearchResult[],
   source: string,
-  format?: string
+  format?: string,
+  target?: string,
 ): void {
   const useFormat = format ?? (isAgentMode() ? "json" : "outline");
 
@@ -149,6 +169,7 @@ function outputResults(
         meta: {
           command: "search",
           query,
+          target: target ?? null,
           timestamp: new Date().toISOString(),
           account: config.activeAccount,
           source,
@@ -218,4 +239,69 @@ function outputResults(
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildLiveSubtreeIds(nodes: WFNode[], rootId: string): Set<string> {
+  const childrenByParent = new Map<string, string[]>();
+  for (const node of nodes) {
+    if (!node.parent_id) continue;
+    const siblings = childrenByParent.get(node.parent_id) ?? [];
+    siblings.push(node.id);
+    childrenByParent.set(node.parent_id, siblings);
+  }
+
+  const ids = new Set<string>();
+  const queue = [rootId];
+
+  while (queue.length > 0) {
+    const current = queue.pop()!;
+    if (ids.has(current)) continue;
+
+    ids.add(current);
+    for (const childId of childrenByParent.get(current) ?? []) {
+      queue.push(childId);
+    }
+  }
+
+  return ids;
+}
+
+function buildLiveParentPath(parentId: string | null, nodesById: Map<string, WFNode>): string {
+  if (!parentId) return "(root)";
+
+  const parts: string[] = [];
+  const visited = new Set<string>();
+  let currentId: string | null = parentId;
+
+  while (currentId && !visited.has(currentId)) {
+    visited.add(currentId);
+    const node = nodesById.get(currentId);
+    if (!node) break;
+    parts.unshift(cleanHtml(node.name));
+    currentId = node.parent_id ?? null;
+  }
+
+  return parts.length > 0 ? parts.join(" > ") : "(root)";
+}
+
+async function resolveLiveSearchTargetId(target: string, api: WorkflowyAPI): Promise<string> {
+  const cached = resolveCacheTargetReference(target);
+  if (cached) return cached.id;
+
+  if (target.startsWith("@") && target.includes("/")) {
+    exitWithError("node_not_found", `Target path "${target}" not found in cache`, "Run `wf cache:sync` first for path-scoped live search");
+  }
+
+  const resolved = resolveTargetReference(target);
+  if (!resolved) {
+    exitWithError("node_not_found", `Target "${target}" could not be resolved`);
+  }
+
+  if (resolved.source === "direct") {
+    return resolved.id;
+  }
+
+  const data = await api.readDoc(resolved.id, 0);
+  const { node } = parseLlmDocResponse(data);
+  return node.id;
 }

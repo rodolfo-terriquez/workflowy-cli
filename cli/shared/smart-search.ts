@@ -1,6 +1,7 @@
-import { getCacheDb, searchNodes, searchNodesByTrigram, type SearchResult, buildBreadcrumbDisplay } from "./cache.ts";
+import { getCacheDb, searchNodes, searchNodesByTrigram, type SearchResult, buildBreadcrumbDisplay, getSubtreeIds } from "./cache.ts";
 import { cleanHtml } from "./nodes.ts";
 import { loadConfig, type LlmConfig } from "./config.ts";
+import { resolveCacheTargetReference } from "./path.ts";
 
 export interface SmartSearchResult extends SearchResult {
   match_type: "fts" | "fuzzy" | "smart";
@@ -145,19 +146,29 @@ export function fuzzySearch(query: string, limit = 20): SmartSearchResult[] {
     .slice(0, limit);
 }
 
-export function tieredSearch(query: string, limit = 20): SmartSearchResult[] {
+function scopeResultsToTarget(results: SmartSearchResult[], target?: string): SmartSearchResult[] {
+  if (!target) return results;
+
+  const resolved = resolveCacheTargetReference(target);
+  if (!resolved) return [];
+
+  const subtreeIds = getSubtreeIds(resolved.id);
+  return results.filter((result) => subtreeIds.has(result.id));
+}
+
+export function tieredSearch(query: string, limit = 20, target?: string): SmartSearchResult[] {
   // Tier 1: FTS
   const ftsResults = searchNodes(query, limit);
-  const results: SmartSearchResult[] = ftsResults.map((r) => ({
+  const results: SmartSearchResult[] = scopeResultsToTarget(ftsResults.map((r) => ({
     ...r,
     match_type: "fts" as const,
-  }));
+  })), target);
 
   if (results.length >= 3) return results.slice(0, limit);
 
   // Tier 2: Fuzzy fallback
   const ftsIds = new Set(results.map((r) => r.id));
-  const fuzzyResults = fuzzySearch(query, limit);
+  const fuzzyResults = scopeResultsToTarget(fuzzySearch(query, limit * 5), target);
   for (const r of fuzzyResults) {
     if (!ftsIds.has(r.id)) {
       results.push(r);
@@ -173,7 +184,7 @@ export async function smartSearch(
   limit = 20,
   target?: string
 ): Promise<SmartSearchResult[]> {
-  const candidates = tieredSearch(query, 100);
+  const candidates = tieredSearch(query, 100, target);
 
   const config = loadConfig();
   const llmConfig: LlmConfig = config.llm ?? {};

@@ -9,6 +9,7 @@ import { registerNodeRead } from "./commands/read.ts";
 import { registerNodeAdd } from "./commands/add.ts";
 import { registerNodeMove } from "./commands/move.ts";
 import { registerNodeComplete } from "./commands/complete.ts";
+import { registerNodeUpdate } from "./commands/update.ts";
 import { registerNodeFind } from "./commands/find.ts";
 import { registerNodeContext } from "./commands/context.ts";
 import { registerNodeDelete } from "./commands/delete.ts";
@@ -87,6 +88,7 @@ function printColoredHelp(): void {
         ["node:add <target> <text>",   "Add a child node to a target"],
         ["node:move <node> <target>",  "Move a node to a different parent"],
         ["node:complete <node>",       "Mark a todo as complete (--undo to uncheck)"],
+        ["node:update <node>",         "Rename a node or edit its note"],
         ["node:delete <node>",         "Delete a node"],
         ["node:find <name-or-path>",   "Find nodes by name or @target/path"],
         ["node:context <target>",      "Node + ancestors, siblings, and children"],
@@ -200,6 +202,7 @@ registerNodeRead(program);
 registerNodeAdd(program);
 registerNodeMove(program);
 registerNodeComplete(program);
+registerNodeUpdate(program);
 registerNodeDelete(program);
 registerNodeFind(program);
 registerNodeContext(program);

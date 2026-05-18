@@ -10,9 +10,9 @@ const HISTORY_PATH = join(getConfigDir(), "history");
 const MAX_HISTORY = 500;
 
 const ALL_COMMANDS = [
-  "node:read", "node:add", "node:move", "node:complete", "node:delete",
+  "node:read", "node:add", "node:move", "node:complete", "node:update", "node:delete",
   "node:find", "node:context", "node:todos", "node:template", "node:export",
-  "node:bulk complete", "node:bulk uncomplete", "node:bulk delete", "node:bulk move",
+  "node:bulk complete", "node:bulk delete", "node:bulk move",
   "search", "tags", "targets", "history",
   "cache:sync", "cache:diff",
   "ai:propose", "ai:preview", "ai:apply", "ai:reject", "ai:list",

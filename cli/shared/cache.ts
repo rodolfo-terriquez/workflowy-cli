@@ -211,6 +211,27 @@ export function getChildren(parentId: string | null): CachedNode[] {
   return db.query("SELECT * FROM nodes WHERE parent_id = ? ORDER BY priority, name").all(parentId) as CachedNode[];
 }
 
+export function getSubtreeIds(rootId: string): Set<string> {
+  if (!isCacheCurrentAccount()) return new Set();
+
+  const db = getCacheDb();
+  const ids = new Set<string>();
+  const queue = [rootId];
+
+  while (queue.length > 0) {
+    const current = queue.pop()!;
+    if (ids.has(current)) continue;
+
+    ids.add(current);
+    const children = db.query("SELECT id FROM nodes WHERE parent_id = ?").all(current) as Array<{ id: string }>;
+    for (const child of children) {
+      queue.push(child.id);
+    }
+  }
+
+  return ids;
+}
+
 export function buildBreadcrumb(nodeId: string): string[] {
   const path: string[] = [];
   let currentId: string | null = nodeId;

@@ -7,7 +7,7 @@ import { getConfigDir } from "../shared/config.ts";
 import { isAgentMode } from "../agent.ts";
 
 const COMMANDS = [
-  "node:read", "node:add", "node:move", "node:complete", "node:delete",
+  "node:read", "node:add", "node:move", "node:complete", "node:update", "node:delete",
   "node:find", "node:context", "node:todos", "node:template", "node:export",
   "node:bulk complete", "node:bulk delete", "node:bulk move",
   "search", "tags", "targets", "history",

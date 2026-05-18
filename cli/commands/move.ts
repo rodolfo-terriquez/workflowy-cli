@@ -2,10 +2,9 @@ import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
 import { requireToken, loadConfig } from "../shared/config.ts";
-import { resolveTarget } from "../targets.ts";
 import { parseLlmDocResponse } from "../shared/nodes.ts";
 import { getNodeById, getCacheNodeCount, getCacheAgeSeconds, isCacheStale, markTargetDirty } from "../shared/cache.ts";
-import { isDirectId, findByNameOrPath } from "../shared/path.ts";
+import { isDirectId, findByNameOrPath, resolveTargetReference } from "../shared/path.ts";
 import { formatJson } from "../output/json.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
@@ -26,7 +25,14 @@ export function registerNodeMove(program: Command): void {
         const api = new WorkflowyAPI(token);
 
         const resolvedNodeId = await resolveNodeArg(nodeId, api);
-        const resolved = resolveTarget(target);
+        if (target.startsWith("@") && target.includes("/") && getCacheNodeCount() === 0) {
+          exitWithError("cache_empty", "Cache is empty.", "Run `wf cache:sync` first for path-based targets.");
+        }
+
+        const resolved = resolveTargetReference(target);
+        if (!resolved) {
+          exitWithError("node_not_found", `Target "${target}" could not be resolved`, "Run `wf cache:sync` to refresh path lookups");
+        }
         const hasCache = getCacheNodeCount() > 0;
 
         if (hasCache) {

@@ -1,12 +1,12 @@
 import type { Command } from "commander";
 import chalk from "chalk";
-import { getCacheDb, getCacheNodeCount, getTargetUuid, buildBreadcrumbDisplay, markTargetDirty, type CachedNode } from "../shared/cache.ts";
+import { getCacheDb, getCacheNodeCount, getSubtreeIds, buildBreadcrumbDisplay, markTargetDirty, type CachedNode } from "../shared/cache.ts";
 import { WorkflowyAPI, type LlmDocOperation } from "../shared/api.ts";
 import { requireToken, loadConfig } from "../shared/config.ts";
-import { resolveTarget } from "../targets.ts";
 import { cleanHtml } from "../shared/nodes.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
+import { resolveCacheTargetReference, resolveTargetReference } from "../shared/path.ts";
 
 function parseSince(s: string): number {
   const match = s.match(/^(\d+)(m|h|d)$/);
@@ -18,19 +18,6 @@ function parseSince(s: string): number {
     case "d": return n * 86400 * 1000;
     default: return 30 * 60 * 1000;
   }
-}
-
-function getSubtreeIds(rootId: string): Set<string> {
-  const db = getCacheDb();
-  const ids = new Set<string>();
-  const queue = [rootId];
-  while (queue.length > 0) {
-    const current = queue.pop()!;
-    ids.add(current);
-    const children = db.query("SELECT id FROM nodes WHERE parent_id = ?").all(current) as Array<{ id: string }>;
-    for (const child of children) queue.push(child.id);
-  }
-  return ids;
 }
 
 interface BulkOpts {
@@ -47,9 +34,11 @@ function filterNodes(opts: BulkOpts): CachedNode[] {
   let rows = db.query("SELECT * FROM nodes").all() as CachedNode[];
 
   if (opts.target) {
-    const resolved = resolveTarget(opts.target);
-    const uuid = getTargetUuid(resolved.id) ?? resolved.id;
-    const subtree = getSubtreeIds(uuid);
+    const resolved = resolveCacheTargetReference(opts.target);
+    if (!resolved) {
+      exitWithError("node_not_found", `Target "${opts.target}" not found in cache`, "Run `wf cache:sync` to refresh path and subtree lookups");
+    }
+    const subtree = getSubtreeIds(resolved.id);
     rows = rows.filter((r) => subtree.has(r.id));
   }
 
@@ -194,7 +183,13 @@ export function registerNodeBulk(program: Command): void {
     if (!opts.to) {
       exitWithError("missing_arg", "Move requires --to <target>", "e.g. wf node:bulk move --filter 'tag:#archive' --to @archive");
     }
-    const dest = resolveTarget(opts.to);
+    if (opts.to.startsWith("@") && opts.to.includes("/") && getCacheNodeCount() === 0) {
+      exitWithError("cache_empty", "Cache is empty.", "Run `wf cache:sync` first for path-based targets.");
+    }
+    const dest = resolveTargetReference(opts.to);
+    if (!dest) {
+      exitWithError("node_not_found", `Target "${opts.to}" could not be resolved`, "Run `wf cache:sync` to refresh path lookups");
+    }
     executeBulk("move", (n) => ({ op: "move", ref: n.id, under: dest.id, position: "top" }), opts);
   });
 }

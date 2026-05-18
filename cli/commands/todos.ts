@@ -1,14 +1,14 @@
 import type { Command } from "commander";
 import chalk from "chalk";
-import { getCacheDb, getCacheNodeCount, getCacheAgeSeconds, isCacheStale, buildBreadcrumbDisplay, getTargetUuid, type CachedNode } from "../shared/cache.ts";
+import { getCacheDb, getCacheNodeCount, getCacheAgeSeconds, isCacheStale, buildBreadcrumbDisplay, getSubtreeIds, type CachedNode } from "../shared/cache.ts";
 import { cleanHtml } from "../shared/nodes.ts";
-import { resolveTarget } from "../targets.ts";
 import { formatJson } from "../output/json.ts";
 import { formatTsv, formatCsv, type TsvRow } from "../shared/output-formats.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 import { loadConfig } from "../shared/config.ts";
 import { startOutputCapture, handleCopyFlag } from "../shared/copy-wrapper.ts";
+import { resolveCacheTargetReference } from "../shared/path.ts";
 
 function parseSince(s: string): number {
   const match = s.match(/^(\d+)(m|h|d)$/);
@@ -20,19 +20,6 @@ function parseSince(s: string): number {
     case "d": return n * 86400 * 1000;
     default: return 30 * 60 * 1000;
   }
-}
-
-function getSubtreeIds(rootId: string): Set<string> {
-  const db = getCacheDb();
-  const ids = new Set<string>();
-  const queue = [rootId];
-  while (queue.length > 0) {
-    const current = queue.pop()!;
-    ids.add(current);
-    const children = db.query("SELECT id FROM nodes WHERE parent_id = ?").all(current) as Array<{ id: string }>;
-    for (const child of children) queue.push(child.id);
-  }
-  return ids;
 }
 
 export function registerNodeTodos(program: Command): void {
@@ -65,13 +52,14 @@ export function registerNodeTodos(program: Command): void {
 
       let subtreeIds: Set<string> | null = null;
       if (opts.target) {
-        const resolved = resolveTarget(opts.target);
-        const uuid = getTargetUuid(resolved.id);
-        const rootId = uuid ?? resolved.id;
-        subtreeIds = getSubtreeIds(rootId);
+        const resolved = resolveCacheTargetReference(opts.target);
+        if (!resolved) {
+          exitWithError("node_not_found", `Target "${opts.target}" not found in cache`, "Run `wf cache:sync` to refresh path and subtree lookups");
+        }
+        subtreeIds = getSubtreeIds(resolved.id);
       }
 
-      let query = `SELECT * FROM nodes WHERE completed = ? AND (line_type = 'todo' OR line_type IS NULL)`;
+      let query = `SELECT * FROM nodes WHERE completed = ? AND line_type = 'todo'`;
       const params: (string | number)[] = [completed];
 
       if (opts.since) {

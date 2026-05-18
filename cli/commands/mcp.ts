@@ -74,13 +74,14 @@ const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "workflowy_search",
-    description: "Full-text search across all nodes",
+    description: "Full-text search across all nodes or a subtree",
     inputSchema: {
       type: "object",
       properties: {
         query: { type: "string", description: "Search query" },
         smart: { type: "boolean", description: "Enable AI reranking", default: false },
         live: { type: "boolean", description: "Search API directly", default: false },
+        target: { type: "string", description: "Scope search to subtree" },
       },
       required: ["query"],
     },
@@ -106,6 +107,20 @@ const MCP_TOOLS: McpTool[] = [
       properties: {
         nodeId: { type: "string", description: "Node ID" },
         undo: { type: "boolean", description: "Uncheck instead", default: false },
+      },
+      required: ["nodeId"],
+    },
+  },
+  {
+    name: "workflowy_update",
+    description: "Rename a node or edit its note",
+    inputSchema: {
+      type: "object",
+      properties: {
+        nodeId: { type: "string", description: "Node ID or cached path" },
+        text: { type: "string", description: "Replacement node text" },
+        note: { type: "string", description: "Replacement note text" },
+        clearNote: { type: "boolean", description: "Remove the note", default: false },
       },
       required: ["nodeId"],
     },
@@ -157,9 +172,10 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
     workflowy_find: ["node:find", String(args.query ?? "")],
     workflowy_todos: ["node:todos", ...(args.target ? ["--target", String(args.target)] : []), ...(args.completed ? ["--completed"] : []), ...(args.since ? ["--since", String(args.since)] : []), ...(args.limit ? ["--limit", String(args.limit)] : [])],
     workflowy_tags: ["tags", ...(args.target ? ["--target", String(args.target)] : []), ...(args.filter ? ["--filter", String(args.filter)] : [])],
-    workflowy_search: ["search", String(args.query ?? ""), ...(args.smart ? ["--smart"] : []), ...(args.live ? ["--live"] : [])],
+    workflowy_search: ["search", String(args.query ?? ""), ...(args.smart ? ["--smart"] : []), ...(args.live ? ["--live"] : []), ...(args.target ? ["--target", String(args.target)] : [])],
     workflowy_move: ["node:move", String(args.nodeId ?? ""), String(args.to ?? ""), ...(args.position ? ["--position", String(args.position)] : [])],
     workflowy_complete: ["node:complete", String(args.nodeId ?? ""), ...(args.undo ? ["--undo"] : [])],
+    workflowy_update: ["node:update", String(args.nodeId ?? ""), ...(args.text !== undefined ? ["--text", String(args.text)] : []), ...(args.note !== undefined ? ["--note", String(args.note)] : []), ...(args.clearNote ? ["--clear-note"] : [])],
     workflowy_propose: ["ai:propose", String(args.instruction ?? "")],
     workflowy_context: ["node:context", String(args.nodeId ?? "")],
     workflowy_sync: ["cache:sync"],

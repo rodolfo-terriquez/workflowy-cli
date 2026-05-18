@@ -7,6 +7,12 @@ export interface ResolvedPath {
   breadcrumb: string[];
 }
 
+export interface ResolvedTargetReference {
+  id: string;
+  label: string;
+  source: "path" | "builtin" | "shortcut" | "direct";
+}
+
 const HEX_ID = /^[0-9a-f]{8,}(-[0-9a-f]{4,}){0,4}$/i;
 
 export function isDirectId(input: string): boolean {
@@ -22,6 +28,68 @@ export function resolvePathOrId(input: string): ResolvedPath | null {
 
   if (input.startsWith("@") && input.includes("/")) {
     return resolvePathTraversal(input);
+  }
+
+  return null;
+}
+
+export function resolveTargetReference(input: string): ResolvedTargetReference | null {
+  if (input.startsWith("@") && input.includes("/")) {
+    const resolved = resolvePathTraversal(input);
+    if (!resolved) return null;
+    return {
+      id: resolved.node.id,
+      label: input,
+      source: "path",
+    };
+  }
+
+  const resolved = resolveTarget(input);
+  return {
+    id: resolved.id,
+    label: input.startsWith("@") ? input : resolved.label,
+    source: resolved.source,
+  };
+}
+
+export function resolveCacheTargetReference(input: string): ResolvedTargetReference | null {
+  if (input.startsWith("@") && input.includes("/")) {
+    const resolved = resolvePathTraversal(input);
+    if (!resolved) return null;
+    return {
+      id: resolved.node.id,
+      label: input,
+      source: "path",
+    };
+  }
+
+  if (isDirectId(input)) {
+    const node = getNodeById(input);
+    if (!node) return null;
+    return {
+      id: node.id,
+      label: input,
+      source: "direct",
+    };
+  }
+
+  const resolved = resolveTarget(input);
+  const uuid = getTargetUuid(resolved.id);
+  if (uuid) {
+    return {
+      id: uuid,
+      label: input.startsWith("@") ? input : resolved.label,
+      source: resolved.source,
+    };
+  }
+
+  const byId = getNodeById(resolved.id);
+  if (byId) {
+    return {
+      id: byId.id,
+      label: input.startsWith("@") ? input : resolved.label,
+      source: resolved.source,
+    };
   }
 
   return null;

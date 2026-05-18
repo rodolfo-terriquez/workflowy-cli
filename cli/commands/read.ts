@@ -16,7 +16,7 @@ import {
   clearTargetDirty,
   type CachedNode,
 } from "../shared/cache.ts";
-import { resolvePathOrId, isDirectId } from "../shared/path.ts";
+import { resolvePathOrId, isDirectId, resolveCacheTargetReference, resolveTargetReference } from "../shared/path.ts";
 import { formatOutline } from "../output/compact.ts";
 import { formatJson } from "../output/json.ts";
 import { isAgentMode } from "../agent.ts";
@@ -44,11 +44,15 @@ export function registerNodeRead(program: Command): void {
         const useJson = opts.format === "json" || isAgentMode();
         const hasCache = getCacheNodeCount() > 0;
 
-        const resolved = resolveTarget(targetStr);
-        const dirty = isTargetDirty(resolved.id);
+        const dirtyKeys = getDirtyKeys(targetStr);
+        const dirty = dirtyKeys.some((key) => isTargetDirty(key));
         const useLive = opts.live || !hasCache || dirty;
 
-        if (dirty && useLive) clearTargetDirty(resolved.id);
+        if (dirty && useLive) {
+          for (const key of dirtyKeys) {
+            clearTargetDirty(key);
+          }
+        }
 
         if (useLive) {
           await readLive(targetStr, depth, useJson, opts.includePath);
@@ -69,7 +73,14 @@ async function readLive(
 ): Promise<void> {
   const token = requireToken();
   const api = new WorkflowyAPI(token);
-  const resolved = resolveTarget(targetStr);
+  if (targetStr.startsWith("@") && targetStr.includes("/") && getCacheNodeCount() === 0) {
+    exitNodeNotFound(targetStr, useJson, "Run `wf cache:sync` first for path-based live reads.");
+  }
+
+  const resolved = resolveTargetReference(targetStr);
+  if (!resolved) {
+    exitNodeNotFound(targetStr, useJson, "Run `wf cache:sync` to refresh path lookups.");
+  }
 
   const data = await api.readDoc(resolved.id, depth);
   const { node, ancestors } = parseLlmDocResponse(data);
@@ -112,6 +123,34 @@ async function readLive(
     console.log(formatOutline(node, depth));
     console.log("");
   }
+}
+
+function getDirtyKeys(targetStr: string): string[] {
+  const keys = new Set<string>();
+
+  if (targetStr.startsWith("@")) {
+    const rootTarget = targetStr.split("/")[0]!;
+    keys.add(resolveTarget(rootTarget).id);
+  }
+
+  const cacheResolved = resolveCacheTargetReference(targetStr);
+  if (cacheResolved) {
+    keys.add(cacheResolved.id);
+  }
+
+  return [...keys];
+}
+
+function exitNodeNotFound(target: string, useJson: boolean, hint?: string): never {
+  const msg = `No node found matching "${target}"`;
+  if (useJson || isAgentMode()) {
+    console.log(JSON.stringify({ error: { code: "node_not_found", message: msg, hint } }, null, 2));
+  } else {
+    console.error(`\n  ${msg}`);
+    if (hint) console.error(`  Hint: ${hint}`);
+    console.error("");
+  }
+  process.exit(1);
 }
 
 function readFromCache(

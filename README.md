@@ -71,6 +71,7 @@ wf node:read [target]
 wf node:add <target> <text>
 wf node:move <node> <target>
 wf node:complete <node>
+wf node:update <node>
 wf node:delete <node>
 wf node:find <path-or-name>
 wf node:context <target>
@@ -146,6 +147,7 @@ wf node:export @today --format markdown
 wf search "campaign"
 wf search "campain 94"
 wf search "pricing bug" --smart
+wf search "launch" --target "@inbox/Projects"
 wf search "q2" --format json
 ```
 
@@ -170,6 +172,7 @@ wf history --limit 50
 wf node:add @inbox "Draft Q3 plan" --type todo
 wf node:move "@today/Fix release notes" @inbox
 wf node:complete "@inbox/Follow up with vendor"
+wf node:update "@inbox/Follow up with vendor" --text "Follow up with billing vendor" --note "Waiting on response"
 wf node:delete "Old scratch item"
 ```
 
