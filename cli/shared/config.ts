@@ -18,6 +18,10 @@ export interface ApiConfig {
   rateLimit?: ApiRateLimitConfig;
 }
 
+export interface McpConfig {
+  instructionsNode?: string;
+}
+
 export interface AccountConfig {
   name: string;
   token: string;
@@ -27,6 +31,7 @@ export interface WFConfig {
   activeAccount: string;
   accounts: Record<string, AccountConfig>;
   api?: ApiConfig;
+  mcp?: McpConfig;
   llm?: LlmConfig;
   aliases?: Record<string, string>;
   [key: string]: unknown;

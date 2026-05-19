@@ -403,6 +403,8 @@ Exposed tools map directly to CLI commands:
 - `workflowy_context(nodeId)` → `wf node:context`
 - `workflowy_sync()` → `wf cache:sync`
 
+When `mcp.instructionsNode` is configured, the MCP `initialize` response also includes an `instructions` field populated from that cached WorkFlowy subtree so clients receive user guidance before any tool call.
+
 **Claude Desktop config:**
 ```json
 {

@@ -1,6 +1,10 @@
 import type { Command } from "commander";
 import chalk from "chalk";
 import { isAgentMode } from "../agent.ts";
+import { loadConfig } from "../shared/config.ts";
+import { getChildren, getNodeById, type CachedNode } from "../shared/cache.ts";
+import { cleanHtml } from "../shared/nodes.ts";
+import { resolvePathOrId } from "../shared/path.ts";
 
 interface McpTool {
   name: string;
@@ -19,6 +23,50 @@ export function getMcpCliInvocation(cmdArgs: string[], mainPath = Bun.main, exec
   }
 
   return [execPath, "--agent", ...cmdArgs];
+}
+
+function getInitializeInstructions(maxDepth = 4): string | null {
+  const configured = loadConfig().mcp?.instructionsNode?.trim();
+  if (!configured) return null;
+
+  const node = resolveInstructionsNode(configured);
+  if (!node) return null;
+
+  const lines = flattenInstructionsNode(node, 0, maxDepth);
+  const instructions = lines.join("\n").trim();
+  return instructions.length > 0 ? instructions : null;
+}
+
+function resolveInstructionsNode(configured: string): CachedNode | null {
+  const byId = getNodeById(configured);
+  if (byId) return byId;
+
+  return resolvePathOrId(configured)?.node ?? null;
+}
+
+function flattenInstructionsNode(node: CachedNode, depth: number, maxDepth: number): string[] {
+  const indent = "  ".repeat(depth);
+  const lines: string[] = [];
+  const name = cleanHtml(node.name);
+  const note = node.note ? cleanHtml(node.note) : null;
+
+  if (name) {
+    lines.push(depth === 0 ? name : `${indent}- ${name}`);
+  }
+
+  if (note) {
+    lines.push(`${indent}${depth === 0 ? "" : "  "}${note}`);
+  }
+
+  if (depth >= maxDepth) {
+    return lines;
+  }
+
+  for (const child of getChildren(node.id)) {
+    lines.push(...flattenInstructionsNode(child, depth + 1, maxDepth));
+  }
+
+  return lines;
 }
 
 const MCP_TOOLS: McpTool[] = [
@@ -489,6 +537,8 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
   const id = msg.id;
 
   if (method === "initialize") {
+    const instructions = getInitializeInstructions();
+
     return {
       jsonrpc: "2.0",
       id,
@@ -496,6 +546,7 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
         serverInfo: { name: "workflowy", version: "3.0.0" },
+        ...(instructions ? { instructions } : {}),
       },
     };
   }

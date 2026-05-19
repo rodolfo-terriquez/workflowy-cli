@@ -85,6 +85,33 @@ async function withTempWorkflowyConfig<T>(fn: (configDir: string) => Promise<T>)
         createdAt: 3,
         modifiedAt: 3,
       },
+      {
+        id: "instructions-1",
+        parent_id: null,
+        name: "Agent instructions",
+        note: "Follow the user instructions exactly.",
+        priority: 2,
+        createdAt: 4,
+        modifiedAt: 4,
+      },
+      {
+        id: "instructions-child-1",
+        parent_id: "instructions-1",
+        name: "Use targets first",
+        note: "Prefer @targets and cached paths before raw ids.",
+        priority: 0,
+        createdAt: 5,
+        modifiedAt: 5,
+      },
+      {
+        id: "instructions-child-2",
+        parent_id: "instructions-1",
+        name: "Resync after many writes",
+        note: null,
+        priority: 1,
+        createdAt: 6,
+        modifiedAt: 6,
+      },
     ]);
 
     return await fn(configDir);
@@ -135,6 +162,47 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
       serverInfo: { name: "workflowy", version: "3.0.0" },
       capabilities: { tools: {} },
     },
+  });
+});
+
+test("includes configured instructions in the initialize response", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    saveConfig({
+      activeAccount: "default",
+      accounts: {
+        default: { name: "default", token: "test-token" },
+      },
+      mcp: {
+        instructionsNode: "instructions-1",
+      },
+    });
+
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 10,
+      method: "initialize",
+      params: {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "test", version: "1" },
+      },
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${message}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+
+    const response = JSON.parse(stdout.trim()) as {
+      result: { instructions?: string };
+    };
+
+    expect(response.result.instructions).toContain("Agent instructions");
+    expect(response.result.instructions).toContain("Follow the user instructions exactly.");
+    expect(response.result.instructions).toContain("- Use targets first");
+    expect(response.result.instructions).toContain("Prefer @targets and cached paths before raw ids.");
   });
 });
 
