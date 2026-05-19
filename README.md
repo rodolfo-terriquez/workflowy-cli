@@ -236,6 +236,23 @@ wf cache:diff --since 30m
 
 Most read commands use the cache automatically. `node:read` and `search` can bypass it with `--live`.
 
+## Rate Limiting
+
+`wf` now self-throttles WorkFlowy API traffic by default:
+
+- `45` requests per minute across normal API calls
+- `65` seconds minimum between full `nodes-export` calls such as `wf cache:sync` and `wf watch:start`
+
+You can adjust those defaults if needed:
+
+```bash
+wf config:get api.rateLimit.requestsPerMinute
+wf config:get api.rateLimit.exportMinIntervalSeconds
+
+wf config:set api.rateLimit.requestsPerMinute 50
+wf config:set api.rateLimit.exportMinIntervalSeconds 70
+```
+
 ## REPL, Completions, and Clipboard
 
 Run `wf` with no arguments to enter the interactive shell.
@@ -305,7 +322,7 @@ wf watch:status
 wf watch:stop
 ```
 
-`watch:start` streams newline-delimited JSON events when running non-interactively.
+`watch:start` streams newline-delimited JSON events when running non-interactively. Its interval must be at least the configured export minimum, which defaults to `65s`.
 
 ### Webhooks
 

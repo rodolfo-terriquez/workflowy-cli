@@ -7,6 +7,7 @@ let _db: Database | null = null;
 export function getCacheDb(): Database {
   if (!_db) {
     _db = new Database(getDbPath(), { create: true });
+    _db.exec("PRAGMA busy_timeout = 5000");
     _db.exec("PRAGMA journal_mode = WAL");
     initCacheSchema(_db);
   }

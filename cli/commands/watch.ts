@@ -9,6 +9,8 @@ import { getCacheDb, replaceAllNodes, getCacheNodeCount, getTargetUuid } from ".
 import { resolveTarget } from "../targets.ts";
 import { cleanHtml } from "../shared/nodes.ts";
 import { isAgentMode } from "../agent.ts";
+import { exitWithError } from "../shared/errors.ts";
+import { getMinimumWatchIntervalMs } from "../shared/rate-limit.ts";
 
 const PID_PATH = join(getConfigDir(), "watch.pid");
 const WEBHOOKS_PATH = join(getConfigDir(), "webhooks.json");
@@ -60,6 +62,18 @@ export function registerWatch(program: Command): void {
       notify?: string;
       format?: string;
     }) => {
+      const requestedInterval = opts.interval ?? "5m";
+      const intervalMs = parseInterval(requestedInterval);
+      const minimumIntervalMs = getMinimumWatchIntervalMs();
+
+      if (intervalMs < minimumIntervalMs) {
+        exitWithError(
+          "interval_too_short",
+          `Watch interval must be at least ${formatDurationMs(minimumIntervalMs)} to avoid export rate limits.`,
+          `Use --interval ${formatDurationMs(minimumIntervalMs)} or longer, or adjust \`api.rateLimit.exportMinIntervalSeconds\`.`,
+        );
+      }
+
       const isTTY = process.stdout.isTTY && !isAgentMode();
 
       if (isTTY) {
@@ -67,11 +81,11 @@ export function registerWatch(program: Command): void {
         if (opts.interval && opts.interval !== "5m") extraArgs.push("--interval", opts.interval);
         if (opts.target) extraArgs.push("--target", opts.target);
         if (opts.notify) extraArgs.push("--notify", opts.notify);
-        startDaemonMode(opts.interval ?? "5m", extraArgs);
+        startDaemonMode(requestedInterval, extraArgs);
         return;
       }
 
-      await runWatchLoop(opts.interval ?? "5m", opts.target, opts.notify);
+      await runWatchLoop(requestedInterval, opts.target, opts.notify);
     });
 
   program
@@ -153,6 +167,12 @@ function parseInterval(s: string): number {
     case "h": return n * 3600 * 1000;
     default: return 5 * 60 * 1000;
   }
+}
+
+function formatDurationMs(ms: number): string {
+  if (ms % 3600_000 === 0) return `${ms / 3600_000}h`;
+  if (ms % 60_000 === 0) return `${ms / 60_000}m`;
+  return `${Math.ceil(ms / 1000)}s`;
 }
 
 function getSubtreeIds(rootId: string): Set<string> {

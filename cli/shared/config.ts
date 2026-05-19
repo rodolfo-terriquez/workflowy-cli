@@ -8,6 +8,16 @@ export interface LlmConfig {
   maxContextTokens?: number;
 }
 
+export interface ApiRateLimitConfig {
+  requestsPerMinute?: number;
+  exportMinIntervalSeconds?: number;
+  maxRetries?: number;
+}
+
+export interface ApiConfig {
+  rateLimit?: ApiRateLimitConfig;
+}
+
 export interface AccountConfig {
   name: string;
   token: string;
@@ -16,6 +26,7 @@ export interface AccountConfig {
 export interface WFConfig {
   activeAccount: string;
   accounts: Record<string, AccountConfig>;
+  api?: ApiConfig;
   llm?: LlmConfig;
   aliases?: Record<string, string>;
   [key: string]: unknown;

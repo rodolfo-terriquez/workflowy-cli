@@ -352,6 +352,8 @@ wf watch --status                    # is it running? last poll?
 
 PID file at `~/.workflowy/watch.pid`. Distinct from `wf cache:sync --watch` (which only refreshes cache, no diff output).
 
+Because watch polling depends on `nodes-export`, the minimum supported interval must stay above the export rate-limit floor. Default client-side throttling is `45` requests/minute overall and `65s` between full exports, configurable via `api.rateLimit.requestsPerMinute` and `api.rateLimit.exportMinIntervalSeconds`.
+
 **Change events streamed as JSON lines (NDJSON):**
 ```json
 {"event": "added",    "id": "abc123", "name": "New task", "parent": "...", "ts": "..."}
@@ -528,6 +530,13 @@ wf account current
 ```
 
 Each account has its own token in `~/.workflowy/config.json` (keyed by account name) and its own SQLite cache at `~/.workflowy/db-<account>.sqlite`. `wf login --account work` sets the name at login time.
+
+Rate-limit settings also live in `~/.workflowy/config.json` and can be changed with:
+
+```
+wf config:set api.rateLimit.requestsPerMinute 50
+wf config:set api.rateLimit.exportMinIntervalSeconds 70
+```
 
 ### 6.3 Windows Support
 

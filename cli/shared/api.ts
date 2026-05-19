@@ -1,3 +1,12 @@
+import { loadConfig } from "./config.ts";
+import {
+  extractRetryAfterMs,
+  getRateLimitSettings,
+  noteRateLimitHit,
+  waitForRateLimitSlot,
+  type RateLimitEndpoint,
+} from "./rate-limit.ts";
+
 const API_BASE = "https://workflowy.com/api/v1";
 const LLM_DOC_BASE = "https://beta.workflowy.com/api/llm/doc";
 
@@ -57,9 +66,11 @@ export function toLlmDocId(id: string): string {
 
 export class WorkflowyAPI {
   private token: string;
+  private accountName: string;
 
-  constructor(token: string) {
+  constructor(token: string, accountName = loadConfig().activeAccount) {
     this.token = token;
+    this.accountName = accountName;
   }
 
   private headers(json = false): Record<string, string> {
@@ -70,12 +81,31 @@ export class WorkflowyAPI {
     return h;
   }
 
+  private async request(url: string, init: RequestInit, endpoint: RateLimitEndpoint): Promise<Response> {
+    const settings = getRateLimitSettings();
+
+    for (let attempt = 0; attempt < settings.maxRetries; attempt++) {
+      await waitForRateLimitSlot(this.accountName, endpoint);
+      const res = await fetch(url, init);
+
+      if (res.status !== 429) {
+        return res;
+      }
+
+      const body = await res.text();
+      const retryAfterMs = extractRetryAfterMs(res.headers.get("Retry-After"), body);
+      await noteRateLimitHit(this.accountName, endpoint, retryAfterMs);
+    }
+
+    throw new Error("API rate limit exceeded after multiple retries.");
+  }
+
   // --- Token validation (standard API) ---
 
   async validate(): Promise<void> {
-    const res = await fetch(`${API_BASE}/targets`, {
+    const res = await this.request(`${API_BASE}/targets`, {
       headers: this.headers(),
-    });
+    }, "general");
     if (!res.ok) {
       throw new Error("Invalid WorkFlowy API key");
     }
@@ -84,9 +114,9 @@ export class WorkflowyAPI {
   // --- Standard API v1 ---
 
   async getNode(id: string): Promise<WFNode> {
-    const res = await fetch(`${API_BASE}/nodes/${id}`, {
+    const res = await this.request(`${API_BASE}/nodes/${id}`, {
       headers: this.headers(),
-    });
+    }, "general");
     if (!res.ok) {
       throw new Error(`API GET /nodes/${id} failed (${res.status}): ${await res.text()}`);
     }
@@ -95,9 +125,10 @@ export class WorkflowyAPI {
   }
 
   async listNodes(parentId: string): Promise<WFNode[]> {
-    const res = await fetch(
+    const res = await this.request(
       `${API_BASE}/nodes?parent_id=${encodeURIComponent(parentId)}`,
-      { headers: this.headers() }
+      { headers: this.headers() },
+      "general",
     );
     if (!res.ok) {
       throw new Error(`API GET /nodes failed (${res.status}): ${await res.text()}`);
@@ -107,9 +138,9 @@ export class WorkflowyAPI {
   }
 
   async getTargets(): Promise<WFTarget[]> {
-    const res = await fetch(`${API_BASE}/targets`, {
+    const res = await this.request(`${API_BASE}/targets`, {
       headers: this.headers(),
-    });
+    }, "general");
     if (!res.ok) {
       throw new Error(`API GET /targets failed (${res.status}): ${await res.text()}`);
     }
@@ -118,9 +149,9 @@ export class WorkflowyAPI {
   }
 
   async exportAll(): Promise<WFNode[]> {
-    const res = await fetch(`${API_BASE}/nodes-export`, {
+    const res = await this.request(`${API_BASE}/nodes-export`, {
       headers: this.headers(),
-    });
+    }, "export");
     if (!res.ok) {
       throw new Error(`API GET /nodes-export failed (${res.status}): ${await res.text()}`);
     }
@@ -135,7 +166,7 @@ export class WorkflowyAPI {
     depth: number = 3
   ): Promise<Record<string, unknown>> {
     const url = `${LLM_DOC_BASE}/read/${encodeURIComponent(nodeId)}/?depth=${depth}`;
-    const res = await fetch(url, { headers: this.headers() });
+    const res = await this.request(url, { headers: this.headers() }, "general");
 
     if (!res.ok) {
       const body = await res.text();
@@ -157,11 +188,11 @@ export class WorkflowyAPI {
       ref: operation.ref ? toLlmDocId(operation.ref) : undefined,
     }));
 
-    const res = await fetch(`${LLM_DOC_BASE}/edit`, {
+    const res = await this.request(`${LLM_DOC_BASE}/edit`, {
       method: "POST",
       headers: this.headers(true),
       body: JSON.stringify({ root: normalizedRoot, operations: normalizedOperations }),
-    });
+    }, "general");
 
     if (!res.ok) {
       const body = await res.text();

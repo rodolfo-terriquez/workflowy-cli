@@ -8,6 +8,11 @@ interface McpTool {
   inputSchema: Record<string, unknown>;
 }
 
+interface ToolCallResult {
+  text: string;
+  isError?: boolean;
+}
+
 const MCP_TOOLS: McpTool[] = [
   {
     name: "workflowy_read",
@@ -165,7 +170,7 @@ const MCP_TOOLS: McpTool[] = [
   },
 ];
 
-async function handleToolCall(name: string, args: Record<string, unknown>): Promise<string> {
+async function handleToolCall(name: string, args: Record<string, unknown>): Promise<ToolCallResult> {
   const cmdMap: Record<string, string[]> = {
     workflowy_read: ["node:read", String(args.target ?? "@inbox"), ...(args.depth ? ["--depth", String(args.depth)] : []), ...(args.live ? ["--live"] : [])],
     workflowy_add: ["node:add", String(args.to ?? "@inbox"), String(args.text ?? ""), ...(args.type ? ["--type", String(args.type)] : []), ...(args.note ? ["--note", String(args.note)] : [])],
@@ -182,16 +187,57 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
   };
 
   const cmdArgs = cmdMap[name];
-  if (!cmdArgs) return JSON.stringify({ error: `Unknown tool: ${name}` });
+  if (!cmdArgs) {
+    return {
+      text: JSON.stringify({ error: { code: "unknown_tool", message: `Unknown tool: ${name}` } }, null, 2),
+      isError: true,
+    };
+  }
 
-  const proc = Bun.spawn(["bun", "run", import.meta.dir + "/../wf.ts", ...cmdArgs, "--agent"], {
+  const proc = Bun.spawn(["bun", "run", import.meta.dir + "/../wf.ts", "--agent", ...cmdArgs], {
     stdout: "pipe",
     stderr: "pipe",
   });
 
-  const stdout = await new Response(proc.stdout).text();
-  await proc.exited;
-  return stdout;
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  const trimmedStdout = stdout.trim();
+  const trimmedStderr = stderr.trim();
+
+  if (exitCode !== 0) {
+    return {
+      text: trimmedStdout || JSON.stringify({
+        error: {
+          code: "tool_call_failed",
+          message: trimmedStderr || `wf command failed with exit code ${exitCode}`,
+          tool: name,
+        },
+      }, null, 2),
+      isError: true,
+    };
+  }
+
+  if (!trimmedStdout) {
+    return {
+      text: JSON.stringify({
+        error: {
+          code: "empty_tool_result",
+          message: `wf returned no output for ${name}`,
+          tool: name,
+        },
+      }, null, 2),
+      isError: true,
+    };
+  }
+
+  return {
+    text: trimmedStdout,
+    isError: false,
+  };
 }
 
 export function registerMcp(program: Command): void {
@@ -466,7 +512,8 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
       jsonrpc: "2.0",
       id,
       result: {
-        content: [{ type: "text", text: result }],
+        content: [{ type: "text", text: result.text }],
+        isError: result.isError ?? false,
       },
     };
   }
