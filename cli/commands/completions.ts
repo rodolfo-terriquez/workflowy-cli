@@ -19,7 +19,7 @@ const COMMANDS = [
   "watch:start", "watch:stop", "watch:status",
   "webhook:create", "webhook:list", "webhook:delete", "webhook:test",
   "workflow:run", "workflow:list", "workflow:create",
-  "mcp", "doctor", "completions", "login",
+  "mcp", "doctor", "completions", "login", "self:update",
 ];
 
 function generateZshCompletion(): string {

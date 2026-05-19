@@ -41,6 +41,12 @@ bun run build
 
 That produces a standalone binary at `dist/wf`.
 
+If you installed `wf` from this git checkout, you can update it later with:
+
+```bash
+wf self:update
+```
+
 You can also run it directly from source:
 
 ```bash
@@ -93,6 +99,7 @@ wf mcp
 wf completions install
 wf doctor
 wf login
+wf self:update
 ```
 
 ### Cache, AI, automation, and account commands
@@ -252,6 +259,13 @@ Shell completions:
 wf completions install
 wf completions install --shell zsh
 wf completions install --shell fish
+```
+
+Git-based install update:
+
+```bash
+wf self:update
+wf self:update --check
 ```
 
 Many output commands also support `--copy`:
@@ -428,6 +442,7 @@ Helpful local checks:
 
 ```bash
 ./dist/wf --help
+./dist/wf self:update --check
 ./dist/wf doctor
 ./dist/wf cache:sync --status --agent
 ```

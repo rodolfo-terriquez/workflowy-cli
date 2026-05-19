@@ -72,6 +72,7 @@ Install completion scripts for bash, zsh, and fish:
 wf completions install        # detects shell, installs to correct profile
 wf completions install --shell zsh
 wf completions install --shell fish
+wf self:update               # pull latest git changes and rebuild dist/wf
 ```
 
 After install, `wf [TAB]` in a real shell completes commands; `wf node:read [TAB]` completes targets from cache. Powered by the same autocomplete data as the TUI.
@@ -506,6 +507,7 @@ Refactor all commands to `group:action` for discoverability as the command surfa
 | `wf account:current` | account |
 | `wf mcp` | — (server mode, top-level) |
 | `wf completions` | — (top-level) |
+| `wf self:update` | — (top-level) |
 | `wf doctor` | — (top-level) |
 | `wf webhook:create` | webhook |
 | `wf webhook:list` | webhook |
