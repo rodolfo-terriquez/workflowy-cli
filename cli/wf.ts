@@ -56,8 +56,10 @@ import { registerCompletions } from "./commands/completions.ts";
 import { registerLogin } from "./commands/login.ts";
 import { registerMcp } from "./commands/mcp.ts";
 import { registerSelfUpdate } from "./commands/self-update.ts";
+import { registerVersion } from "./commands/version.ts";
+import { getRuntimeVersionInfo } from "./shared/version.ts";
 
-const VERSION = "3.0.0";
+const VERSION = getRuntimeVersionInfo().version;
 
 const BANNER = `
 ${chalk.hex("#3da3e0").bold("  ╦ ╦╔═╗╦═╗╦╔═╔═╗╦  ╔═╗╦ ╦╦ ╦")}
@@ -155,6 +157,7 @@ function printColoredHelp(): void {
       title: "Utilities",
       commands: [
         ["batch",                      "Execute a JSON array of ops from stdin"],
+        ["version",                    "Show CLI version and git revision"],
         ["login [apiKey]",             "Authenticate with WorkFlowy"],
         ["self:update",                "Pull latest git changes and rebuild wf"],
         ["doctor",                     "Diagnose common setup issues"],
@@ -188,7 +191,7 @@ const program = new Command();
 program
   .name("wf")
   .description("WorkFlowy CLI — for agents, automations, and power users")
-  .version(VERSION, "-v, --version")
+  .option("-v, --version", "Show version number")
   .option("--agent", "Enable agent mode (JSON output, no colors)")
   .option("--copy", "Copy output to clipboard")
   .hook("preAction", () => {
@@ -249,6 +252,7 @@ registerDoctor(program);
 registerCompletions(program);
 registerLogin(program);
 registerSelfUpdate(program);
+registerVersion(program);
 
 // Alias expansion: check config for user-defined aliases before parsing
 import { expandAlias } from "./shared/alias.ts";
@@ -264,5 +268,13 @@ if (process.argv.length <= 2) {
   }
 } else {
   const expandedArgs = expandAlias(process.argv);
+  const userArgs = expandedArgs.slice(2);
+  const wantsTopLevelVersion = userArgs.length > 0 && userArgs.every((arg) => arg === "-v" || arg === "--version");
+
+  if (wantsTopLevelVersion) {
+    console.log(getRuntimeVersionInfo(process.argv[0] ?? process.execPath, process.cwd(), process.argv, import.meta.dir).version);
+    process.exit(0);
+  }
+
   program.parse(expandedArgs);
 }

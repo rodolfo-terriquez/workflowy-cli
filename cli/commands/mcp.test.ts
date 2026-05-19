@@ -128,40 +128,44 @@ async function withTempWorkflowyConfig<T>(fn: (configDir: string) => Promise<T>)
 }
 
 test("responds to newline-delimited initialize messages over stdio", async () => {
-  const message = JSON.stringify({
-    jsonrpc: "2.0",
-    id: 1,
-    method: "initialize",
-    params: {
-      protocolVersion: "2024-11-05",
-      capabilities: {},
-      clientInfo: { name: "test", version: "1" },
-    },
-  });
+  await withTempWorkflowyConfig(async (configDir) => {
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "test", version: "1" },
+      },
+    });
 
-  const { code, stdout, stderr } = await runMcpServer(`${message}\n`);
+    const { code, stdout, stderr } = await runMcpServer(`${message}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
 
-  expect(code).toBe(0);
-  expect(stderr).toBe("");
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
 
-  const response = JSON.parse(stdout.trim()) as {
-    jsonrpc: string;
-    id: number;
-    result: {
-      protocolVersion: string;
-      serverInfo: { name: string; version: string };
-      capabilities: { tools: Record<string, unknown> };
+    const response = JSON.parse(stdout.trim()) as {
+      jsonrpc: string;
+      id: number;
+      result: {
+        protocolVersion: string;
+        serverInfo: { name: string; version: string };
+        capabilities: { tools: Record<string, unknown> };
+      };
     };
-  };
 
-  expect(response).toEqual({
-    jsonrpc: "2.0",
-    id: 1,
-    result: {
-      protocolVersion: "2024-11-05",
-      serverInfo: { name: "workflowy", version: "3.0.0" },
-      capabilities: { tools: {} },
-    },
+    expect(response).toEqual({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {
+        protocolVersion: "2024-11-05",
+        serverInfo: { name: "workflowy", version: "3.0.0" },
+        capabilities: { tools: {} },
+      },
+    });
   });
 });
 
@@ -207,32 +211,36 @@ test("includes configured instructions in the initialize response", async () => 
 });
 
 test("responds to content-length framed initialize messages over stdio", async () => {
-  const body = JSON.stringify({
-    jsonrpc: "2.0",
-    id: 1,
-    method: "initialize",
-    params: {
-      protocolVersion: "2024-11-05",
-      capabilities: {},
-      clientInfo: { name: "test", version: "1" },
-    },
+  await withTempWorkflowyConfig(async (configDir) => {
+    const body = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "test", version: "1" },
+      },
+    });
+
+    const input = `Content-Length: ${body.length}\r\n\r\n${body}`;
+    const { code, stdout, stderr } = await runMcpServer(input, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+    expect(stdout.startsWith("Content-Length: ")).toBe(true);
+
+    const separator = stdout.indexOf("\r\n\r\n");
+    expect(separator).toBeGreaterThan(-1);
+
+    const response = JSON.parse(stdout.slice(separator + 4)) as {
+      result: { serverInfo: { name: string } };
+    };
+
+    expect(response.result.serverInfo.name).toBe("workflowy");
   });
-
-  const input = `Content-Length: ${body.length}\r\n\r\n${body}`;
-  const { code, stdout, stderr } = await runMcpServer(input);
-
-  expect(code).toBe(0);
-  expect(stderr).toBe("");
-  expect(stdout.startsWith("Content-Length: ")).toBe(true);
-
-  const separator = stdout.indexOf("\r\n\r\n");
-  expect(separator).toBeGreaterThan(-1);
-
-  const response = JSON.parse(stdout.slice(separator + 4)) as {
-    result: { serverInfo: { name: string } };
-  };
-
-  expect(response.result.serverInfo.name).toBe("workflowy");
 });
 
 test("uses the source entrypoint when MCP runs from bun", () => {

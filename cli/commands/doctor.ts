@@ -6,8 +6,9 @@ import { getConfigDir, loadConfig, getDbPath } from "../shared/config.ts";
 import { getCacheNodeCount, getCacheAgeSeconds } from "../shared/cache.ts";
 import { isAgentMode } from "../agent.ts";
 import { join } from "path";
+import { getRuntimeVersionInfo } from "../shared/version.ts";
 
-const VERSION = "3.0.0";
+const VERSION = getRuntimeVersionInfo().version;
 
 interface CheckResult {
   label: string;
