@@ -5,6 +5,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { resetCacheDb, replaceAllNodes } from "../shared/cache.ts";
 import { saveConfig } from "../shared/config.ts";
+import { getMcpCliInvocation } from "./mcp.ts";
 
 const CWD = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -152,6 +153,26 @@ test("responds to content-length framed initialize messages over stdio", async (
   };
 
   expect(response.result.serverInfo.name).toBe("workflowy");
+});
+
+test("uses the source entrypoint when MCP runs from bun", () => {
+  expect(getMcpCliInvocation(["search", "test"], "/tmp/workflowy-cli/cli/wf.ts", "/opt/homebrew/bin/bun")).toEqual([
+    "bun",
+    "run",
+    "/tmp/workflowy-cli/cli/wf.ts",
+    "--agent",
+    "search",
+    "test",
+  ]);
+});
+
+test("uses the compiled executable when MCP runs from a bundled binary", () => {
+  expect(getMcpCliInvocation(["search", "test"], "/$bunfs/root/cli/wf.ts", "/tmp/workflowy-cli/dist/wf")).toEqual([
+    "/tmp/workflowy-cli/dist/wf",
+    "--agent",
+    "search",
+    "test",
+  ]);
 });
 
 test("returns non-empty MCP tool content for cache-backed reads", async () => {

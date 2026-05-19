@@ -13,6 +13,14 @@ interface ToolCallResult {
   isError?: boolean;
 }
 
+export function getMcpCliInvocation(cmdArgs: string[], mainPath = Bun.main, execPath = process.execPath): string[] {
+  if (mainPath && !mainPath.startsWith("/$bunfs/")) {
+    return ["bun", "run", mainPath, "--agent", ...cmdArgs];
+  }
+
+  return [execPath, "--agent", ...cmdArgs];
+}
+
 const MCP_TOOLS: McpTool[] = [
   {
     name: "workflowy_read",
@@ -194,7 +202,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
     };
   }
 
-  const proc = Bun.spawn(["bun", "run", import.meta.dir + "/../wf.ts", "--agent", ...cmdArgs], {
+  const proc = Bun.spawn(getMcpCliInvocation(cmdArgs), {
     stdout: "pipe",
     stderr: "pipe",
   });
