@@ -5,6 +5,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { resetCacheDb, replaceAllNodes } from "../shared/cache.ts";
 import { saveConfig } from "../shared/config.ts";
+import { cacheBookmarks, resetDb } from "../shared/db.ts";
 import { getMcpCliInvocation } from "./mcp.ts";
 
 const CWD = fileURLToPath(new URL("../..", import.meta.url));
@@ -42,9 +43,19 @@ async function withTempWorkflowyConfig<T>(fn: (configDir: string) => Promise<T>)
   const configDir = mkdtempSync(join(tmpdir(), "workflowy-cli-mcp-"));
   process.env.WORKFLOWY_CONFIG_DIR = configDir;
   resetCacheDb();
+  resetDb();
 
   try {
-    saveConfig({ activeAccount: "default", accounts: {} });
+    saveConfig({
+      activeAccount: "default",
+      accounts: {
+        default: { name: "default", token: "test-token" },
+      },
+    });
+    cacheBookmarks("default", [
+      { id: "inbox", name: "inbox", nodeId: "Inbox" },
+      { id: "projects", name: "projects", nodeId: "Projects" },
+    ]);
     replaceAllNodes([
       {
         id: "root-1",
@@ -79,6 +90,7 @@ async function withTempWorkflowyConfig<T>(fn: (configDir: string) => Promise<T>)
     return await fn(configDir);
   } finally {
     resetCacheDb();
+    resetDb();
     if (previousDir === undefined) {
       delete process.env.WORKFLOWY_CONFIG_DIR;
     } else {
@@ -202,6 +214,35 @@ test("returns non-empty MCP tool content for cache-backed reads", async () => {
     expect(response.result.content[0]?.type).toBe("text");
     expect(response.result.content[0]?.text).toContain("\"command\": \"search\"");
     expect(response.result.content[0]?.text).toContain("Search target");
+  });
+});
+
+test("returns available targets through MCP", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 4,
+      method: "tools/call",
+      params: {
+        name: "workflowy_targets",
+        arguments: {},
+      },
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${message}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+
+    const response = parseJsonLine<{
+      result: { isError?: boolean; content: Array<{ type: string; text: string }> };
+    }>(stdout);
+
+    expect(response.result.isError).toBe(false);
+    expect(response.result.content[0]?.text).toContain("\"command\": \"targets\"");
+    expect(response.result.content[0]?.text).toContain("\"id\": \"projects\"");
   });
 });
 

@@ -393,6 +393,7 @@ Exposed tools map directly to CLI commands:
 - `workflowy_find(query, target)` → `wf node:find`
 - `workflowy_todos(target, completed, since, limit)` → `wf node:todos`
 - `workflowy_tags(target, filter)` → `wf tags`
+- `workflowy_targets()` → `wf targets`
 - `workflowy_search(query, smart, live, target)` → `wf search`
 - `workflowy_move(nodeId, to, position)` → `wf node:move`
 - `workflowy_complete(nodeId, undo)` → `wf node:complete`

@@ -86,6 +86,14 @@ const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: "workflowy_targets",
+    description: "List available WorkFlowy targets (system targets and bookmarks)",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
     name: "workflowy_search",
     description: "Full-text search across all nodes or a subtree",
     inputSchema: {
@@ -185,6 +193,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
     workflowy_find: ["node:find", String(args.query ?? "")],
     workflowy_todos: ["node:todos", ...(args.target ? ["--target", String(args.target)] : []), ...(args.completed ? ["--completed"] : []), ...(args.since ? ["--since", String(args.since)] : []), ...(args.limit ? ["--limit", String(args.limit)] : [])],
     workflowy_tags: ["tags", ...(args.target ? ["--target", String(args.target)] : []), ...(args.filter ? ["--filter", String(args.filter)] : [])],
+    workflowy_targets: ["targets"],
     workflowy_search: ["search", String(args.query ?? ""), ...(args.smart ? ["--smart"] : []), ...(args.live ? ["--live"] : []), ...(args.target ? ["--target", String(args.target)] : [])],
     workflowy_move: ["node:move", String(args.nodeId ?? ""), String(args.to ?? ""), ...(args.position ? ["--position", String(args.position)] : [])],
     workflowy_complete: ["node:complete", String(args.nodeId ?? ""), ...(args.undo ? ["--undo"] : [])],
