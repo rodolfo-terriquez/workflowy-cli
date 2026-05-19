@@ -8,7 +8,7 @@ import { isAgentMode } from "../agent.ts";
 import { join } from "path";
 import { getRuntimeVersionInfo } from "../shared/version.ts";
 
-const VERSION = getRuntimeVersionInfo().version;
+const VERSION = getRuntimeVersionInfo().appVersion;
 
 interface CheckResult {
   label: string;

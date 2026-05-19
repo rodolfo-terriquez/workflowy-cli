@@ -13,7 +13,6 @@ export function registerVersion(program: Command): void {
       if (isAgentMode()) {
         console.log(JSON.stringify({
           meta: { command: "version", wf_version: info.appVersion },
-          version: info.version,
           app_version: info.appVersion,
           git_head: info.gitHead,
         }, null, 2));
@@ -21,9 +20,10 @@ export function registerVersion(program: Command): void {
       }
 
       if (info.gitHead) {
-        console.log(`\n  ${chalk.bold("wf")} ${chalk.cyan(info.version)} ${chalk.dim(`(git ${info.gitHead})`)}\n`);
+        console.log(`\n  ${chalk.bold("wf")} ${chalk.cyan(info.appVersion)}`);
+        console.log(`  ${chalk.dim("git")} ${chalk.dim(info.gitHead)}\n`);
       } else {
-        console.log(`\n  ${chalk.bold("wf")} ${chalk.cyan(info.version)}\n`);
+        console.log(`\n  ${chalk.bold("wf")} ${chalk.cyan(info.appVersion)}\n`);
       }
     });
 }

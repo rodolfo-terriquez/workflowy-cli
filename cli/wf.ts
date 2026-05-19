@@ -59,7 +59,7 @@ import { registerSelfUpdate } from "./commands/self-update.ts";
 import { registerVersion } from "./commands/version.ts";
 import { getRuntimeVersionInfo } from "./shared/version.ts";
 
-const VERSION = getRuntimeVersionInfo().version;
+const VERSION = getRuntimeVersionInfo().appVersion;
 
 const BANNER = `
 ${chalk.hex("#3da3e0").bold("  ╦ ╦╔═╗╦═╗╦╔═╔═╗╦  ╔═╗╦ ╦╦ ╦")}
@@ -272,7 +272,7 @@ if (process.argv.length <= 2) {
   const wantsTopLevelVersion = userArgs.length > 0 && userArgs.every((arg) => arg === "-v" || arg === "--version");
 
   if (wantsTopLevelVersion) {
-    console.log(getRuntimeVersionInfo(process.argv[0] ?? process.execPath, process.cwd(), process.argv, import.meta.dir).version);
+    console.log(getRuntimeVersionInfo(process.argv[0] ?? process.execPath, process.cwd(), process.argv, import.meta.dir).appVersion);
     process.exit(0);
   }
 

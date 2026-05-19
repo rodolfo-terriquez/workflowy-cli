@@ -5,7 +5,7 @@ import { join } from "path";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 import { findWorkflowyRepoRoot, getSelfUpdateCandidates } from "../shared/self-update.ts";
-import { APP_VERSION, formatCliVersion } from "../shared/version.ts";
+import { APP_VERSION } from "../shared/version.ts";
 
 interface CommandResult {
   ok: boolean;
@@ -53,7 +53,7 @@ export function registerSelfUpdate(program: Command): void {
           branch,
           upstream,
           currentHead,
-          currentVersion: formatCliVersion(APP_VERSION, currentHead),
+          appVersion: APP_VERSION,
           dirtyTracked: dirtyTracked.length > 0,
           targetBinary,
         });
@@ -102,8 +102,7 @@ export function registerSelfUpdate(program: Command): void {
         upstream,
         beforeHead: currentHead,
         afterHead: updatedHead,
-        beforeVersion: formatCliVersion(APP_VERSION, currentHead),
-        afterVersion: formatCliVersion(APP_VERSION, updatedHead),
+        appVersion: APP_VERSION,
         targetBinary,
       });
     });
@@ -145,7 +144,7 @@ function emitStatus(info: {
   branch: string;
   upstream: string;
   currentHead: string;
-  currentVersion: string;
+  appVersion: string;
   dirtyTracked: boolean;
   targetBinary: string;
 }): void {
@@ -158,11 +157,11 @@ function emitStatus(info: {
   }
 
   console.log(`\n  ${chalk.bold("wf self:update")} — install check\n`);
-  console.log(`  ${chalk.green("✓")} Version: ${info.currentVersion}`);
+  console.log(`  ${chalk.green("✓")} Version: ${info.appVersion}`);
+  console.log(`  ${chalk.green("✓")} Git HEAD: ${info.currentHead}`);
   console.log(`  ${chalk.green("✓")} Repo root: ${info.repoRoot}`);
   console.log(`  ${chalk.green("✓")} Branch: ${info.branch}`);
   console.log(`  ${chalk.green("✓")} Upstream: ${info.upstream}`);
-  console.log(`  ${chalk.green("✓")} Current HEAD: ${info.currentHead}`);
   console.log(`  ${info.dirtyTracked ? chalk.yellow("⚠") : chalk.green("✓")} Tracked worktree: ${info.dirtyTracked ? "dirty" : "clean"}`);
   console.log(`  ${chalk.green("✓")} Binary target: ${info.targetBinary}\n`);
 }
@@ -173,8 +172,7 @@ function emitUpdated(info: {
   upstream: string;
   beforeHead: string;
   afterHead: string;
-  beforeVersion: string;
-  afterVersion: string;
+  appVersion: string;
   targetBinary: string;
 }): void {
   if (isAgentMode()) {
@@ -188,7 +186,7 @@ function emitUpdated(info: {
 
   const changed = info.beforeHead !== info.afterHead;
   console.log(`\n  ${chalk.green("✓")} Update complete`);
-  console.log(`  ${chalk.dim("Version:")} ${info.beforeVersion}${changed ? ` → ${info.afterVersion}` : ` (${chalk.dim("already current")})`}`);
+  console.log(`  ${chalk.dim("Version:")} ${info.appVersion}`);
   console.log(`  ${chalk.dim("Repo:")} ${info.repoRoot}`);
   console.log(`  ${chalk.dim("Branch:")} ${info.branch} (${info.upstream})`);
   console.log(`  ${chalk.dim("HEAD:")} ${info.beforeHead}${changed ? ` → ${info.afterHead}` : ` (${chalk.dim("already current")})`}`);

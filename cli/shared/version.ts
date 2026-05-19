@@ -5,11 +5,6 @@ export const APP_VERSION = "3.0.0";
 export interface VersionInfo {
   appVersion: string;
   gitHead: string | null;
-  version: string;
-}
-
-export function formatCliVersion(appVersion: string, gitHead?: string | null): string {
-  return gitHead ? `${appVersion}+${gitHead}` : appVersion;
 }
 
 export function getRepoGitHead(repoRoot: string): string | null {
@@ -36,6 +31,5 @@ export function getRuntimeVersionInfo(
   return {
     appVersion: APP_VERSION,
     gitHead,
-    version: formatCliVersion(APP_VERSION, gitHead),
   };
 }
