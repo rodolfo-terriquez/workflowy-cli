@@ -9,6 +9,7 @@ import {
   getSelfUpdateCandidates,
   isWorkflowyRepoRoot,
   parseProcessListLine,
+  readRepoAppVersion,
   splitCommandLine,
 } from "./self-update.ts";
 
@@ -101,4 +102,15 @@ test("getMcpRestartMode distinguishes restartable port processes", () => {
   expect(getMcpRestartMode(["/tmp/wf", "mcp"])).toBe("stop_only");
   expect(getMcpRestartMode(["/tmp/wf", "mcp", "--port", "3399"])).toBe("restart");
   expect(getMcpRestartMode(["/tmp/wf", "search", "launch"])).toBeNull();
+});
+
+test("readRepoAppVersion returns the package version from the repo root", () => {
+  const root = mkdtempSync(join(tmpdir(), "workflowy-cli-self-update-"));
+
+  try {
+    writeFileSync(join(root, "package.json"), JSON.stringify({ name: "@workflowy/cli", version: "9.9.9" }));
+    expect(readRepoAppVersion(root)).toBe("9.9.9");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

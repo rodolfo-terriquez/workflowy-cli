@@ -63,6 +63,20 @@ export function isWorkflowyRepoRoot(dir: string): boolean {
   }
 }
 
+export function readRepoAppVersion(repoRoot: string): string | null {
+  const packageJsonPath = join(repoRoot, "package.json");
+  if (!existsSync(packageJsonPath)) return null;
+
+  try {
+    const pkg = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as { version?: unknown };
+    return typeof pkg.version === "string" && pkg.version.trim().length > 0
+      ? pkg.version.trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function splitCommandLine(command: string): string[] {
   const args: string[] = [];
   let current = "";

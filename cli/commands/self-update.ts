@@ -10,6 +10,7 @@ import {
   getMcpRestartMode,
   getSelfUpdateCandidates,
   parseProcessListLine,
+  readRepoAppVersion,
   type McpRestartMode,
 } from "../shared/self-update.ts";
 import { APP_VERSION } from "../shared/version.ts";
@@ -65,6 +66,7 @@ export function registerSelfUpdate(program: Command): void {
       )).trim();
       const currentHead = await requireCommand(["git", "rev-parse", "--short", "HEAD"], repoRoot);
       const targetBinary = join(repoRoot, "dist", "wf");
+      const repoAppVersion = readRepoAppVersion(repoRoot) ?? APP_VERSION;
 
       if (opts.check) {
         emitStatus({
@@ -72,7 +74,7 @@ export function registerSelfUpdate(program: Command): void {
           branch,
           upstream,
           currentHead,
-          appVersion: APP_VERSION,
+          appVersion: repoAppVersion,
           dirtyTracked: dirtyTracked.length > 0,
           targetBinary,
         });
@@ -122,6 +124,7 @@ export function registerSelfUpdate(program: Command): void {
       renameSync(tempBinary, targetBinary);
 
       const mcpSummary = restartManagedMcpProcesses(runningMcp, repoRoot);
+      const updatedAppVersion = readRepoAppVersion(repoRoot) ?? repoAppVersion;
 
       emitUpdated({
         repoRoot,
@@ -129,7 +132,7 @@ export function registerSelfUpdate(program: Command): void {
         upstream,
         beforeHead: currentHead,
         afterHead: updatedHead,
-        appVersion: APP_VERSION,
+        appVersion: updatedAppVersion,
         targetBinary,
         mcpRestarted: mcpSummary.restarted.length,
         mcpStoppedOnly: mcpSummary.stoppedOnly.length,
@@ -179,7 +182,7 @@ function emitStatus(info: {
 }): void {
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "self:update", mode: "check", wf_version: "3.0.4" },
+      meta: { command: "self:update", mode: "check", wf_version: "3.0.5" },
       ...info,
     }, null, 2));
     return;
@@ -208,7 +211,7 @@ function emitUpdated(info: {
 }): void {
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "self:update", wf_version: "3.0.4" },
+      meta: { command: "self:update", wf_version: "3.0.5" },
       ...info,
       updated: info.beforeHead !== info.afterHead,
     }, null, 2));
