@@ -142,6 +142,27 @@ const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: "list_bookmarks",
+    description: "List saved local bookmarks and their target nodes",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "save_bookmark",
+    description: "Save or update a local bookmark for a WorkFlowy node",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Bookmark name, with or without @" },
+        target: { type: "string", description: "Target node reference (@target, path, or node ID)" },
+        context: { type: "string", description: "Optional context note for agents" },
+      },
+      required: ["name", "target"],
+    },
+  },
+  {
     name: "workflowy_search",
     description: "Full-text search across all nodes or a subtree",
     inputSchema: {
@@ -242,6 +263,8 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
     workflowy_todos: ["node:todos", ...(args.target ? ["--target", String(args.target)] : []), ...(args.completed ? ["--completed"] : []), ...(args.since ? ["--since", String(args.since)] : []), ...(args.limit ? ["--limit", String(args.limit)] : [])],
     workflowy_tags: ["tags", ...(args.target ? ["--target", String(args.target)] : []), ...(args.filter ? ["--filter", String(args.filter)] : [])],
     workflowy_targets: ["targets"],
+    list_bookmarks: ["bookmark:list", "--format", "json"],
+    save_bookmark: ["bookmark:save", String(args.name ?? ""), String(args.target ?? ""), ...(args.context ? ["--context", String(args.context)] : []), "--format", "json"],
     workflowy_search: ["search", String(args.query ?? ""), ...(args.smart ? ["--smart"] : []), ...(args.live ? ["--live"] : []), ...(args.target ? ["--target", String(args.target)] : [])],
     workflowy_move: ["node:move", String(args.nodeId ?? ""), String(args.to ?? ""), ...(args.position ? ["--position", String(args.position)] : [])],
     workflowy_complete: ["node:complete", String(args.nodeId ?? ""), ...(args.undo ? ["--undo"] : [])],
@@ -545,7 +568,7 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
       result: {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "workflowy", version: "3.0.0" },
+        serverInfo: { name: "workflowy", version: "3.0.1" },
         ...(instructions ? { instructions } : {}),
       },
     };

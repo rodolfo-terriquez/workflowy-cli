@@ -3,11 +3,10 @@ import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
 import { requireToken, loadConfig } from "../shared/config.ts";
 import { parseLlmDocResponse, cleanHtml, type FlatNode } from "../shared/nodes.ts";
-import { resolveTarget } from "../targets.ts";
+import { resolveSavedTargetNodeId, resolveTarget } from "../targets.ts";
 import {
   getNodeById,
   getChildren,
-  getTargetUuid,
   buildBreadcrumb,
   getCacheNodeCount,
   getCacheAgeSeconds,
@@ -100,7 +99,7 @@ async function readLive(
       timestamp: new Date().toISOString(),
       account: config.activeAccount,
       source: "live",
-      wf_version: "3.0.0",
+      wf_version: "3.0.1",
     };
 
     const output: Record<string, unknown> = {
@@ -177,7 +176,7 @@ function readFromCache(
     nodeId = targetStr;
   } else {
     const resolved = resolveTarget(targetStr);
-    const uuid = getTargetUuid(resolved.id);
+    const uuid = resolveSavedTargetNodeId(resolved.id);
     if (uuid) {
       nodeId = uuid;
     } else {
@@ -237,7 +236,7 @@ function readFromCache(
       source: "cache",
       cache_age_seconds: cacheAge,
       cache_stale: stale,
-      wf_version: "3.0.0",
+      wf_version: "3.0.1",
     };
 
     const output: Record<string, unknown> = {

@@ -3,12 +3,11 @@ import chalk from "chalk";
 import {
   getNodeById,
   getChildren,
-  getTargetUuid,
   buildBreadcrumbDisplay,
   getCacheNodeCount,
   type CachedNode,
 } from "../shared/cache.ts";
-import { resolveTarget } from "../targets.ts";
+import { resolveSavedTargetNodeId, resolveTarget } from "../targets.ts";
 import { resolvePathOrId, isDirectId, findByNameOrPath } from "../shared/path.ts";
 import { cleanHtml } from "../shared/nodes.ts";
 import { isAgentMode } from "../agent.ts";
@@ -23,7 +22,7 @@ function resolveTargetToCache(target: string): CachedNode | null {
 
   if (target.startsWith("@") && !target.includes("/")) {
     const resolved = resolveTarget(target);
-    const uuid = getTargetUuid(resolved.id);
+    const uuid = resolveSavedTargetNodeId(resolved.id);
     if (uuid) return getNodeById(uuid);
     return null;
   }
@@ -84,7 +83,7 @@ export function registerNodeContext(program: Command): void {
             target,
             resolved_id: node.id,
             timestamp: new Date().toISOString(),
-            wf_version: "3.0.0",
+            wf_version: "3.0.1",
           },
           node: {
             id: node.id,

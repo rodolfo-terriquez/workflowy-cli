@@ -25,6 +25,7 @@ import { registerSearch } from "./commands/search.ts";
 import { registerTags } from "./commands/tags.ts";
 import { registerTargets } from "./commands/targets.ts";
 import { registerHistory } from "./commands/history.ts";
+import { registerBookmarkCommands } from "./commands/bookmark.ts";
 
 // Cache commands
 import { registerCacheSync } from "./commands/sync.ts";
@@ -107,6 +108,8 @@ function printColoredHelp(): void {
         ["search <query>",            "Full-text search (--smart for AI rerank)"],
         ["tags",                       "List all #hashtags with counts"],
         ["targets",                    "List all available @targets"],
+        ["bookmark:list",              "List saved local bookmarks"],
+        ["bookmark:save <name> <target>","Save a local bookmark"],
         ["history",                    "Recently accessed nodes"],
       ],
     },
@@ -220,6 +223,7 @@ registerExport(program);
 registerSearch(program);
 registerTags(program);
 registerTargets(program);
+registerBookmarkCommands(program);
 registerHistory(program);
 
 // Cache group

@@ -13,7 +13,7 @@ const ALL_COMMANDS = [
   "node:read", "node:add", "node:move", "node:complete", "node:update", "node:delete",
   "node:find", "node:context", "node:todos", "node:template", "node:export",
   "node:bulk complete", "node:bulk delete", "node:bulk move",
-  "search", "tags", "targets", "history",
+  "search", "tags", "targets", "bookmark:list", "bookmark:save", "history",
   "cache:sync", "cache:diff",
   "ai:propose", "ai:preview", "ai:apply", "ai:reject", "ai:list",
   "batch",

@@ -122,7 +122,7 @@ test("cache metadata and history stay isolated per account", () => {
   expect(historyModule.getAccessHistory().map((entry) => entry.id)).toEqual(["node-default"]);
 });
 
-test("bookmark cache migrates legacy schema and allows duplicate ids across accounts", () => {
+test("target cache migrates legacy schema and allows duplicate ids across accounts", () => {
   cleanupWorkspace();
 
   const legacyDb = new Database(configModule.getDbPath(), { create: true });
@@ -142,18 +142,88 @@ test("bookmark cache migrates legacy schema and allows duplicate ids across acco
   );
   legacyDb.close(false);
 
-  expect(dbModule.getCachedBookmarks("default")).toEqual([
-    { id: "inbox", name: "inbox", nodeId: "node-default" },
+  expect(dbModule.getCachedTargets("default")).toEqual([
+    { key: "inbox", label: "inbox", nodeId: "node-default", type: "shortcut" },
   ]);
 
-  dbModule.cacheBookmarks("test", [
-    { id: "inbox", name: "inbox", nodeId: "node-test" },
+  dbModule.cacheTargets("test", [
+    { key: "inbox", label: "inbox", nodeId: "node-test", type: "shortcut" },
   ]);
 
-  expect(dbModule.getCachedBookmarks("default")).toEqual([
-    { id: "inbox", name: "inbox", nodeId: "node-default" },
+  expect(dbModule.getCachedTargets("default")).toEqual([
+    { key: "inbox", label: "inbox", nodeId: "node-default", type: "shortcut" },
   ]);
-  expect(dbModule.getCachedBookmarks("test")).toEqual([
-    { id: "inbox", name: "inbox", nodeId: "node-test" },
+  expect(dbModule.getCachedTargets("test")).toEqual([
+    { key: "inbox", label: "inbox", nodeId: "node-test", type: "shortcut" },
+  ]);
+});
+
+test("local bookmarks stay isolated per account", () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: {
+      default: { name: "default", token: "token-default" },
+      test: { name: "test", token: "token-test" },
+    },
+  });
+
+  dbModule.saveBookmark("default", {
+    name: "home",
+    nodeId: "node-default",
+    context: "Default account bookmark",
+  });
+
+  expect(dbModule.listBookmarks("default").map((bookmark) => bookmark.name)).toEqual(["home"]);
+  expect(dbModule.listBookmarks("test")).toEqual([]);
+
+  configModule.saveConfig({
+    activeAccount: "test",
+    accounts: {
+      default: { name: "default", token: "token-default" },
+      test: { name: "test", token: "token-test" },
+    },
+  });
+
+  dbModule.saveBookmark("test", {
+    name: "home",
+    nodeId: "node-test",
+    context: "Test account bookmark",
+  });
+
+  expect(dbModule.listBookmarks("default").map((bookmark) => bookmark.nodeId)).toEqual(["node-default"]);
+  expect(dbModule.listBookmarks("test").map((bookmark) => bookmark.nodeId)).toEqual(["node-test"]);
+
+  expect(dbModule.getBookmark("default", "home")?.context).toBe("Default account bookmark");
+  expect(dbModule.getBookmark("test", "home")?.context).toBe("Test account bookmark");
+});
+
+test("local bookmark schema migrates to include context fields", () => {
+  cleanupWorkspace();
+
+  const legacyDb = new Database(configModule.getDbPath(), { create: true });
+  legacyDb.exec(`
+    DROP TABLE IF EXISTS bookmarks;
+    CREATE TABLE bookmarks (
+      name TEXT NOT NULL,
+      node_id TEXT NOT NULL,
+      account TEXT NOT NULL,
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      PRIMARY KEY (account, name)
+    );
+  `);
+  legacyDb.run(
+    "INSERT INTO bookmarks (name, node_id, account, updated_at) VALUES (?, ?, ?, unixepoch())",
+    ["home", "node-default", "default"]
+  );
+  legacyDb.close(false);
+
+  expect(dbModule.listBookmarks("default")).toEqual([
+    {
+      name: "home",
+      nodeId: "node-default",
+      context: null,
+      createdAt: expect.any(String),
+      updatedAt: expect.any(Number),
+    },
   ]);
 });

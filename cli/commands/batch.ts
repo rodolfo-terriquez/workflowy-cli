@@ -1,8 +1,8 @@
 import type { Command } from "commander";
 import { WorkflowyAPI, type LlmDocOperation } from "../shared/api.ts";
 import { requireToken } from "../shared/config.ts";
-import { resolveTarget } from "../targets.ts";
 import { markTargetDirty } from "../shared/cache.ts";
+import { resolveTargetReference } from "../shared/path.ts";
 
 interface BatchOp {
   op: "capture" | "add" | "complete" | "uncomplete" | "move" | "delete";
@@ -43,7 +43,13 @@ export function registerBatch(program: Command): void {
 
       for (const op of ops) {
         const targetStr = op.to ?? op.target ?? "@inbox";
-        const resolved = resolveTarget(targetStr);
+        const resolved = resolveTargetReference(targetStr);
+        if (!resolved) {
+          console.log(JSON.stringify({
+            error: { code: "node_not_found", message: `Target "${targetStr}" not found`, hint: "Run `wf cache:sync` to refresh path lookups" },
+          }, null, 2));
+          process.exit(1);
+        }
         const root = resolved.id;
 
         if (!grouped.has(root)) grouped.set(root, []);
@@ -97,7 +103,7 @@ export function registerBatch(program: Command): void {
       }
 
       console.log(JSON.stringify({
-        meta: { command: "batch", timestamp: new Date().toISOString(), wf_version: "3.0.0" },
+        meta: { command: "batch", timestamp: new Date().toISOString(), wf_version: "3.0.1" },
         results,
         total_operations: ops.length,
         api_calls: grouped.size,

@@ -1,11 +1,19 @@
 import type { WorkflowyAPI, WFTarget } from "./shared/api.ts";
 import { loadConfig } from "./shared/config.ts";
-import { getCachedBookmarks, cacheBookmarks } from "./shared/db.ts";
+import { getTargetUuid } from "./shared/cache.ts";
+import {
+  cacheTargets,
+  getBookmark,
+  getCachedTargetNodeId,
+  getCachedTargets,
+  listBookmarks,
+  normalizeBookmarkName,
+} from "./shared/db.ts";
 
 export interface ResolvedTarget {
   id: string;
   label: string;
-  source: "builtin" | "shortcut" | "direct";
+  source: "builtin" | "shortcut" | "bookmark" | "direct";
 }
 
 const SYSTEM_TARGETS: Record<string, string> = {
@@ -16,18 +24,31 @@ const SYSTEM_TARGETS: Record<string, string> = {
   next_week: "Next Week",
 };
 
+export function normalizeTargetKey(targetStr: string): string {
+  return normalizeBookmarkName(targetStr);
+}
+
 export function resolveTarget(targetStr: string): ResolvedTarget {
   if (!targetStr.startsWith("@")) {
     return { id: targetStr, label: targetStr, source: "direct" };
   }
 
-  const name = targetStr.slice(1).toLowerCase().replace(/-/g, "_");
+  const name = normalizeTargetKey(targetStr);
 
   if (name in SYSTEM_TARGETS) {
     return {
       id: name,
       label: SYSTEM_TARGETS[name]!,
       source: "builtin",
+    };
+  }
+
+  const account = loadConfig().activeAccount;
+  if (getBookmark(account, name)) {
+    return {
+      id: name,
+      label: name,
+      source: "bookmark",
     };
   }
 
@@ -39,31 +60,70 @@ export function resolveTarget(targetStr: string): ResolvedTarget {
   };
 }
 
+export function resolveSavedTargetNodeId(targetKey: string): string | null {
+  const normalized = normalizeTargetKey(targetKey);
+  const account = loadConfig().activeAccount;
+
+  const bookmark = getBookmark(account, normalized);
+  if (bookmark) return bookmark.nodeId;
+
+  const cachedTarget = getCachedTargetNodeId(account, normalized);
+  if (cachedTarget) return cachedTarget;
+
+  return getTargetUuid(normalized);
+}
+
 export async function listAllTargets(
   api: WorkflowyAPI
 ): Promise<WFTarget[]> {
   const config = loadConfig();
   const account = config.activeAccount;
 
-  const cached = getCachedBookmarks(account);
+  const cached = getCachedTargets(account);
   if (cached) {
-    return cached.map((b) => ({
-      key: b.name,
-      type: "shortcut" as const,
-      name: b.nodeId,
-    }));
+    return mergeLocalBookmarks(
+      cached.map((target) => ({
+        key: target.key,
+        type: target.type,
+        name: target.label,
+      })),
+      account,
+    );
   }
 
   const targets = await api.getTargets();
 
-  cacheBookmarks(
+  cacheTargets(
     account,
     targets.map((t) => ({
-      id: t.key,
-      name: t.key,
-      nodeId: t.name ?? t.key,
+      key: normalizeTargetKey(t.key),
+      label: t.name ?? t.key,
+      nodeId: null,
+      type: t.type,
     }))
   );
 
-  return targets;
+  return mergeLocalBookmarks(targets, account);
+}
+
+function mergeLocalBookmarks(targets: WFTarget[], account: string): WFTarget[] {
+  const merged = new Map<string, WFTarget>();
+
+  for (const target of targets) {
+    merged.set(normalizeTargetKey(target.key), {
+      key: normalizeTargetKey(target.key),
+      type: target.type,
+      name: target.name,
+    });
+  }
+
+  for (const bookmark of listBookmarks(account)) {
+    merged.set(bookmark.name, {
+      key: bookmark.name,
+      type: "shortcut",
+      name: bookmark.context || bookmark.name,
+    });
+  }
+
+  return [...merged.values()].sort((a, b) => a.key.localeCompare(b.key));
 }

@@ -3,18 +3,22 @@ import chalk from "chalk";
 import { writeFileSync, readFileSync, existsSync, unlinkSync } from "fs";
 import { join } from "path";
 import { WorkflowyAPI } from "../shared/api.ts";
-import { requireToken, getConfigDir } from "../shared/config.ts";
+import { requireToken, getConfigDir, loadConfig } from "../shared/config.ts";
 import {
   replaceAllNodes,
   getLastSyncedAt,
   getCacheNodeCount,
   getCacheAgeSeconds,
   clearTargetUuid,
+  getTargetUuid,
   setTargetUuid,
   clearAllDirtyFlags,
 } from "../shared/cache.ts";
 import { isAgentMode } from "../agent.ts";
+import { parseLlmDocResponse } from "../shared/nodes.ts";
+import { cacheTargets } from "../shared/db.ts";
 import { buildSystemTargetMap } from "../shared/system-targets.ts";
+import { normalizeTargetKey } from "../targets.ts";
 
 const SYSTEM_TARGETS = ["inbox", "today", "tomorrow", "calendar", "next_week"] as const;
 
@@ -59,12 +63,13 @@ export async function doSync(): Promise<{ nodeCount: number; syncedAt: number }>
 
   clearAllDirtyFlags();
   resolveSystemTargets(allNodes);
+  await refreshTargetCache(api);
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
 
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "cache:sync", timestamp: new Date().toISOString(), wf_version: "3.0.0" },
+      meta: { command: "cache:sync", timestamp: new Date().toISOString(), wf_version: "3.0.1" },
       message: `Synced ${nodeCount} nodes`,
       node_count: nodeCount,
       synced_at: syncedAt,
@@ -84,7 +89,7 @@ function showStatus(): void {
 
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "cache:sync", mode: "status", timestamp: new Date().toISOString(), wf_version: "3.0.0" },
+      meta: { command: "cache:sync", mode: "status", timestamp: new Date().toISOString(), wf_version: "3.0.1" },
       last_synced_at: lastSynced,
       node_count: nodeCount,
       cache_age_seconds: ageSeconds,
@@ -167,4 +172,37 @@ function resolveSystemTargets(nodes: Awaited<ReturnType<WorkflowyAPI["exportAll"
       setTargetUuid(target, mappedId);
     }
   }
+}
+
+async function refreshTargetCache(api: WorkflowyAPI): Promise<void> {
+  const account = loadConfig().activeAccount;
+  const targets = await api.getTargets();
+  const resolvedTargets = [];
+
+  for (const target of targets) {
+    let nodeId: string | null = null;
+
+    try {
+      const data = await api.readDoc(target.key, 0);
+      nodeId = parseLlmDocResponse(data).node.id || null;
+    } catch {
+      nodeId = target.type === "system" ? getCachedSystemTargetUuid(target.key) : null;
+    }
+
+    resolvedTargets.push({
+      key: normalizeTargetKey(target.key),
+      label: target.name ?? target.key,
+      nodeId,
+      type: target.type,
+    });
+  }
+
+  cacheTargets(account, resolvedTargets);
+}
+
+function getCachedSystemTargetUuid(targetKey: string): string | null {
+  const normalizedKey = normalizeTargetKey(targetKey);
+  return SYSTEM_TARGETS.includes(normalizedKey as (typeof SYSTEM_TARGETS)[number])
+    ? getTargetUuid(normalizedKey)
+    : null;
 }

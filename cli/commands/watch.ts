@@ -5,8 +5,8 @@ import { join } from "path";
 import { platform } from "os";
 import { WorkflowyAPI } from "../shared/api.ts";
 import { requireToken, getConfigDir } from "../shared/config.ts";
-import { getCacheDb, replaceAllNodes, getCacheNodeCount, getTargetUuid } from "../shared/cache.ts";
-import { resolveTarget } from "../targets.ts";
+import { getCacheDb, replaceAllNodes, getCacheNodeCount } from "../shared/cache.ts";
+import { resolveSavedTargetNodeId, resolveTarget } from "../targets.ts";
 import { cleanHtml } from "../shared/nodes.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
@@ -108,7 +108,7 @@ export function registerWatch(program: Command): void {
     .action(() => {
       if (!existsSync(PID_PATH)) {
         if (isAgentMode()) {
-          console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: "3.0.0" }, running: false }));
+          console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: "3.0.1" }, running: false }));
         } else {
           console.log("\n  Watch daemon: not running.\n");
         }
@@ -118,14 +118,14 @@ export function registerWatch(program: Command): void {
       if (Number.isNaN(pid) || !isProcessRunning(pid)) {
         unlinkSync(PID_PATH);
         if (isAgentMode()) {
-          console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: "3.0.0" }, running: false }));
+          console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: "3.0.1" }, running: false }));
         } else {
           console.log("\n  Watch daemon: not running.\n");
         }
         return;
       }
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: "3.0.0" }, running: true, pid }));
+        console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: "3.0.1" }, running: true, pid }));
       } else {
         console.log(`\n  Watch daemon: running (PID ${pid})\n`);
       }
@@ -256,7 +256,7 @@ async function runWatchLoop(interval: string, target?: string, notify?: string):
 
       if (target && !subtreeIds) {
         const resolved = resolveTarget(target);
-        const uuid = getTargetUuid(resolved.id) ?? resolved.id;
+        const uuid = resolveSavedTargetNodeId(resolved.id) ?? resolved.id;
         subtreeIds = getSubtreeIds(uuid);
       }
 
@@ -303,7 +303,7 @@ async function runWatchLoop(interval: string, target?: string, notify?: string):
 
       if (target) {
         const resolved = resolveTarget(target);
-        const uuid = getTargetUuid(resolved.id) ?? resolved.id;
+        const uuid = resolveSavedTargetNodeId(resolved.id) ?? resolved.id;
         subtreeIds = getSubtreeIds(uuid);
       }
     } catch {

@@ -5,7 +5,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { resetCacheDb, replaceAllNodes } from "../shared/cache.ts";
 import { saveConfig } from "../shared/config.ts";
-import { cacheBookmarks, resetDb } from "../shared/db.ts";
+import { cacheTargets, resetDb, saveBookmark } from "../shared/db.ts";
 import { getMcpCliInvocation } from "./mcp.ts";
 
 const CWD = fileURLToPath(new URL("../..", import.meta.url));
@@ -52,10 +52,6 @@ async function withTempWorkflowyConfig<T>(fn: (configDir: string) => Promise<T>)
         default: { name: "default", token: "test-token" },
       },
     });
-    cacheBookmarks("default", [
-      { id: "inbox", name: "inbox", nodeId: "Inbox" },
-      { id: "projects", name: "projects", nodeId: "Projects" },
-    ]);
     replaceAllNodes([
       {
         id: "root-1",
@@ -95,6 +91,15 @@ async function withTempWorkflowyConfig<T>(fn: (configDir: string) => Promise<T>)
         modifiedAt: 4,
       },
       {
+        id: "projects-1",
+        parent_id: null,
+        name: "Projects",
+        note: "Long-lived projects root",
+        priority: 3,
+        createdAt: 4,
+        modifiedAt: 4,
+      },
+      {
         id: "instructions-child-1",
         parent_id: "instructions-1",
         name: "Use targets first",
@@ -113,6 +118,15 @@ async function withTempWorkflowyConfig<T>(fn: (configDir: string) => Promise<T>)
         modifiedAt: 6,
       },
     ]);
+    cacheTargets("default", [
+      { key: "inbox", label: "Inbox", nodeId: "root-1", type: "system" },
+      { key: "projects", label: "Projects", nodeId: "projects-1", type: "shortcut" },
+    ]);
+    saveBookmark("default", {
+      name: "home",
+      nodeId: "root-1",
+      context: "Primary inbox bookmark",
+    });
 
     return await fn(configDir);
   } finally {
@@ -162,7 +176,7 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
       id: 1,
       result: {
         protocolVersion: "2024-11-05",
-        serverInfo: { name: "workflowy", version: "3.0.0" },
+        serverInfo: { name: "workflowy", version: "3.0.1" },
         capabilities: { tools: {} },
       },
     });
@@ -319,6 +333,95 @@ test("returns available targets through MCP", async () => {
     expect(response.result.isError).toBe(false);
     expect(response.result.content[0]?.text).toContain("\"command\": \"targets\"");
     expect(response.result.content[0]?.text).toContain("\"id\": \"projects\"");
+  });
+});
+
+test("returns saved bookmarks through MCP", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 5,
+      method: "tools/call",
+      params: {
+        name: "list_bookmarks",
+        arguments: {},
+      },
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${message}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+
+    const response = parseJsonLine<{
+      result: { isError?: boolean; content: Array<{ type: string; text: string }> };
+    }>(stdout);
+
+    expect(response.result.isError).toBe(false);
+    expect(response.result.content[0]?.text).toContain("\"command\": \"bookmark:list\"");
+    expect(response.result.content[0]?.text).toContain("\"name\": \"home\"");
+    expect(response.result.content[0]?.text).toContain("Primary inbox bookmark");
+  });
+});
+
+test("saves bookmarks through MCP and resolves them in reads", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    const saveMessage = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 6,
+      method: "tools/call",
+      params: {
+        name: "save_bookmark",
+        arguments: {
+          name: "work",
+          target: "@projects",
+          context: "Projects root",
+        },
+      },
+    });
+
+    const saveResult = await runMcpServer(`${saveMessage}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(saveResult.code).toBe(0);
+    expect(saveResult.stderr).toBe("");
+
+    const saveResponse = parseJsonLine<{
+      result: { isError?: boolean; content: Array<{ type: string; text: string }> };
+    }>(saveResult.stdout);
+
+    expect(saveResponse.result.isError).toBe(false);
+    expect(saveResponse.result.content[0]?.text).toContain("\"command\": \"bookmark:save\"");
+    expect(saveResponse.result.content[0]?.text).toContain("\"name\": \"work\"");
+    expect(saveResponse.result.content[0]?.text).toContain("\"node_id\": \"projects-1\"");
+
+    const readMessage = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 7,
+      method: "tools/call",
+      params: {
+        name: "workflowy_read",
+        arguments: { target: "@work" },
+      },
+    });
+
+    const readResult = await runMcpServer(`${readMessage}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(readResult.code).toBe(0);
+    expect(readResult.stderr).toBe("");
+
+    const readResponse = parseJsonLine<{
+      result: { isError?: boolean; content: Array<{ type: string; text: string }> };
+    }>(readResult.stdout);
+
+    expect(readResponse.result.isError).toBe(false);
+    expect(readResponse.result.content[0]?.text).toContain("\"resolved_id\": \"projects-1\"");
+    expect(readResponse.result.content[0]?.text).toContain("Projects");
   });
 });
 

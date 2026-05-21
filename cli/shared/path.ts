@@ -1,6 +1,6 @@
-import { getCacheDb, getChildren, getNodeById, getTargetUuid, type CachedNode } from "./cache.ts";
+import { getCacheDb, getChildren, getNodeById, type CachedNode } from "./cache.ts";
 import { cleanHtml } from "./nodes.ts";
-import { resolveTarget } from "../targets.ts";
+import { resolveSavedTargetNodeId, resolveTarget } from "../targets.ts";
 
 export interface ResolvedPath {
   node: CachedNode;
@@ -10,7 +10,7 @@ export interface ResolvedPath {
 export interface ResolvedTargetReference {
   id: string;
   label: string;
-  source: "path" | "builtin" | "shortcut" | "direct";
+  source: "path" | "builtin" | "shortcut" | "bookmark" | "direct";
 }
 
 const HEX_ID = /^[0-9a-f]{8,}(-[0-9a-f]{4,}){0,4}$/i;
@@ -45,7 +45,7 @@ export function resolveTargetReference(input: string): ResolvedTargetReference |
   }
 
   const resolved = resolveTarget(input);
-  const mappedUuid = getTargetUuid(resolved.id);
+  const mappedUuid = resolveSavedTargetNodeId(resolved.id);
 
   if (mappedUuid) {
     return {
@@ -55,7 +55,7 @@ export function resolveTargetReference(input: string): ResolvedTargetReference |
     };
   }
 
-  if (resolved.source === "builtin") {
+  if (resolved.source === "builtin" || resolved.source === "bookmark") {
     return null;
   }
 
@@ -88,7 +88,7 @@ export function resolveCacheTargetReference(input: string): ResolvedTargetRefere
   }
 
   const resolved = resolveTarget(input);
-  const uuid = getTargetUuid(resolved.id);
+  const uuid = resolveSavedTargetNodeId(resolved.id);
   if (uuid) {
     return {
       id: uuid,
@@ -119,7 +119,7 @@ function resolvePathTraversal(input: string): ResolvedPath | null {
   let current: CachedNode | null = null;
 
   // First try: use the stored target→UUID mapping from sync
-  const uuid = getTargetUuid(resolved.id);
+  const uuid = resolveSavedTargetNodeId(resolved.id);
   if (uuid) {
     current = getNodeById(uuid);
   }
@@ -173,7 +173,7 @@ export function findByNameOrPath(input: string): CachedNode[] {
   // @target without path — use system target mapping
   if (input.startsWith("@") && !input.includes("/")) {
     const resolved = resolveTarget(input);
-    const uuid = getTargetUuid(resolved.id);
+    const uuid = resolveSavedTargetNodeId(resolved.id);
     if (uuid) {
       const node = getNodeById(uuid);
       return node ? [node] : [];

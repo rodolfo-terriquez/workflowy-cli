@@ -4,10 +4,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdir
 import { join } from "path";
 import { WorkflowyAPI } from "../shared/api.ts";
 import { requireToken, getConfigDir, loadConfig } from "../shared/config.ts";
-import { resolveTarget } from "../targets.ts";
-import { getNodeById, getChildren, getTargetUuid, getCacheNodeCount, markTargetDirty } from "../shared/cache.ts";
+import { resolveSavedTargetNodeId } from "../targets.ts";
+import { getNodeById, getChildren, getCacheNodeCount, markTargetDirty } from "../shared/cache.ts";
 import { cleanHtml } from "../shared/nodes.ts";
-import { resolvePathOrId } from "../shared/path.ts";
+import { resolvePathOrId, resolveTargetReference } from "../shared/path.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 
@@ -88,7 +88,7 @@ export function registerNodeTemplate(program: Command): void {
 
           if (useJson) {
             console.log(JSON.stringify({
-              meta: { command: "node:template", action: "list", wf_version: "3.0.0" },
+              meta: { command: "node:template", action: "list", wf_version: "3.0.1" },
               templates,
             }, null, 2));
           } else {
@@ -116,8 +116,9 @@ export function registerNodeTemplate(program: Command): void {
             if (!resolved) exitWithError("node_not_found", `Path "${opts.from}" not found`, "");
             nodeId = resolved.node.id;
           } else {
-            const resolved = resolveTarget(opts.from);
-            nodeId = getTargetUuid(resolved.id) ?? resolved.id;
+            const resolved = resolveTargetReference(opts.from);
+            if (!resolved) exitWithError("node_not_found", `Target "${opts.from}" not found`, "Run `wf cache:sync` to refresh path lookups");
+            nodeId = resolveSavedTargetNodeId(resolved.id) ?? resolved.id;
           }
 
           const templateNode = buildTemplateFromCache(nodeId);
@@ -130,7 +131,7 @@ export function registerNodeTemplate(program: Command): void {
           writeFileSync(join(TEMPLATES_DIR, `${name}.json`), JSON.stringify(template, null, 2), "utf-8");
 
           if (useJson) {
-            console.log(JSON.stringify({ meta: { command: "node:template", action: "save", wf_version: "3.0.0" }, message: `Template "${name}" saved.` }, null, 2));
+            console.log(JSON.stringify({ meta: { command: "node:template", action: "save", wf_version: "3.0.1" }, message: `Template "${name}" saved.` }, null, 2));
           } else {
             console.log(`\n  ${chalk.green("✓")} Template "${chalk.cyan(name)}" saved.\n`);
           }
@@ -147,7 +148,8 @@ export function registerNodeTemplate(program: Command): void {
           const template = JSON.parse(readFileSync(templatePath, "utf-8")) as Template;
           const token = requireToken();
           const api = new WorkflowyAPI(token);
-          const resolved = resolveTarget(opts.to);
+          const resolved = resolveTargetReference(opts.to);
+          if (!resolved) exitWithError("node_not_found", `Target "${opts.to}" not found`, "Run `wf cache:sync` to refresh path lookups");
 
           const items = template.nodes.map(function toItem(n: TemplateNode): { n: string; d?: string; l?: string; c?: unknown[] } {
             const item: { n: string; d?: string; l?: string; c?: unknown[] } = { n: substituteVars(n.name) };
@@ -169,7 +171,7 @@ export function registerNodeTemplate(program: Command): void {
           markTargetDirty(resolved.id);
 
           if (useJson) {
-            console.log(JSON.stringify({ meta: { command: "node:template", action: "apply", wf_version: "3.0.0" }, message: `Template "${name}" applied to ${opts.to}.` }, null, 2));
+            console.log(JSON.stringify({ meta: { command: "node:template", action: "apply", wf_version: "3.0.1" }, message: `Template "${name}" applied to ${opts.to}.` }, null, 2));
           } else {
             console.log(`\n  ${chalk.green("✓")} Template "${chalk.cyan(name)}" applied to ${chalk.cyan(opts.to)}.\n`);
           }
@@ -183,7 +185,7 @@ export function registerNodeTemplate(program: Command): void {
           unlinkSync(delPath);
 
           if (useJson) {
-            console.log(JSON.stringify({ meta: { command: "node:template", action: "delete", wf_version: "3.0.0" }, message: `Template "${name}" deleted.` }, null, 2));
+            console.log(JSON.stringify({ meta: { command: "node:template", action: "delete", wf_version: "3.0.1" }, message: `Template "${name}" deleted.` }, null, 2));
           } else {
             console.log(`\n  ${chalk.red("✗")} Template "${chalk.cyan(name)}" deleted.\n`);
           }
