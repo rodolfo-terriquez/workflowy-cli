@@ -83,7 +83,7 @@ export function registerNodeContext(program: Command): void {
             target,
             resolved_id: node.id,
             timestamp: new Date().toISOString(),
-            wf_version: "3.0.2",
+            wf_version: "3.0.3",
           },
           node: {
             id: node.id,

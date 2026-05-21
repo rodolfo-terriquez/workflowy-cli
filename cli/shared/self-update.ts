@@ -2,6 +2,15 @@ import { existsSync, readFileSync, realpathSync, statSync } from "fs";
 import { dirname, join, resolve } from "path";
 
 const PACKAGE_NAME = "@workflowy/cli";
+const ABSOLUTE_PATH_RE = /^(\/|[A-Za-z]:[\\/])/;
+
+export interface ParsedProcessCommand {
+  pid: number;
+  command: string;
+  argv: string[];
+}
+
+export type McpRestartMode = "restart" | "stop_only";
 
 export function getSelfUpdateCandidates(
   execPath: string,
@@ -52,6 +61,84 @@ export function isWorkflowyRepoRoot(dir: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function splitCommandLine(command: string): string[] {
+  const args: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+
+  for (const char of command) {
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === "\"") {
+      quote = char;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (current.length > 0) {
+        args.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.length > 0) {
+    args.push(current);
+  }
+
+  return args;
+}
+
+export function parseProcessListLine(line: string): ParsedProcessCommand | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+
+  const match = trimmed.match(/^(\d+)\s+(.+)$/);
+  if (!match) return null;
+
+  const pid = Number(match[1]);
+  const command = match[2]!;
+  if (!Number.isFinite(pid) || pid <= 0) return null;
+
+  return {
+    pid,
+    command,
+    argv: splitCommandLine(command),
+  };
+}
+
+export function findWorkflowyRepoRootFromArgv(argv: string[]): string | null {
+  const candidates = argv.filter((arg) => ABSOLUTE_PATH_RE.test(arg));
+  return findWorkflowyRepoRoot(candidates);
+}
+
+export function getMcpRestartMode(argv: string[]): McpRestartMode | null {
+  if (!argv.includes("mcp")) return null;
+  return argv.includes("--port") ? "restart" : "stop_only";
 }
 
 function normalizeCandidate(candidate: string): string | null {

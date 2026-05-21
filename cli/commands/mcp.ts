@@ -589,7 +589,7 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
       result: {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "workflowy", version: "3.0.2" },
+        serverInfo: { name: "workflowy", version: "3.0.3" },
         ...(instructions ? { instructions } : {}),
       },
     };

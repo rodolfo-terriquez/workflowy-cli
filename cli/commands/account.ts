@@ -14,7 +14,7 @@ export function registerAccountCommands(program: Command): void {
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "account:list", wf_version: "3.0.2" },
+          meta: { command: "account:list", wf_version: "3.0.3" },
           accounts: accounts.map((name) => ({
             name,
             active: name === config.activeAccount,
@@ -57,7 +57,7 @@ export function registerAccountCommands(program: Command): void {
       saveConfig(config);
 
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "account:switch", wf_version: "3.0.2" }, active_account: name }));
+        console.log(JSON.stringify({ meta: { command: "account:switch", wf_version: "3.0.3" }, active_account: name }));
       } else {
         console.log(`\n  ${chalk.green("✓")} Switched to account ${chalk.bold(name)}\n`);
       }
@@ -71,7 +71,7 @@ export function registerAccountCommands(program: Command): void {
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "account:current", wf_version: "3.0.2" },
+          meta: { command: "account:current", wf_version: "3.0.3" },
           active_account: config.activeAccount,
           has_token: !!config.accounts[config.activeAccount]?.token,
         }));

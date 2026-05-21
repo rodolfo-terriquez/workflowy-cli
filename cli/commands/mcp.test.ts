@@ -176,7 +176,7 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
       id: 1,
       result: {
         protocolVersion: "2024-11-05",
-        serverInfo: { name: "workflowy", version: "3.0.2" },
+        serverInfo: { name: "workflowy", version: "3.0.3" },
         capabilities: { tools: {} },
       },
     });

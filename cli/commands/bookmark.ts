@@ -44,7 +44,7 @@ export function registerBookmarkCommands(program: Command): void {
             command: "bookmark:list",
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.0.2",
+            wf_version: "3.0.3",
           },
           bookmarks: rows,
         }));
@@ -99,7 +99,7 @@ export function registerBookmarkCommands(program: Command): void {
             command: "bookmark:save",
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.0.2",
+            wf_version: "3.0.3",
           },
           bookmark: {
             name: bookmark.name,
