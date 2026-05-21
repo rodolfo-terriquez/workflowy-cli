@@ -69,7 +69,7 @@ export async function doSync(): Promise<{ nodeCount: number; syncedAt: number }>
 
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "cache:sync", timestamp: new Date().toISOString(), wf_version: "3.0.1" },
+      meta: { command: "cache:sync", timestamp: new Date().toISOString(), wf_version: "3.0.2" },
       message: `Synced ${nodeCount} nodes`,
       node_count: nodeCount,
       synced_at: syncedAt,
@@ -89,7 +89,7 @@ function showStatus(): void {
 
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "cache:sync", mode: "status", timestamp: new Date().toISOString(), wf_version: "3.0.1" },
+      meta: { command: "cache:sync", mode: "status", timestamp: new Date().toISOString(), wf_version: "3.0.2" },
       last_synced_at: lastSynced,
       node_count: nodeCount,
       cache_age_seconds: ageSeconds,

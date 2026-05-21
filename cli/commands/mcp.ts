@@ -269,6 +269,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
     workflowy_move: ["node:move", String(args.nodeId ?? ""), String(args.to ?? ""), ...(args.position ? ["--position", String(args.position)] : [])],
     workflowy_complete: ["node:complete", String(args.nodeId ?? ""), ...(args.undo ? ["--undo"] : [])],
     workflowy_update: ["node:update", String(args.nodeId ?? ""), ...(args.text !== undefined ? ["--text", String(args.text)] : []), ...(args.note !== undefined ? ["--note", String(args.note)] : []), ...(args.clearNote ? ["--clear-note"] : [])],
+    workflowy_batch: ["batch"],
     workflowy_propose: ["ai:propose", String(args.instruction ?? "")],
     workflowy_context: ["node:context", String(args.nodeId ?? "")],
     workflowy_sync: ["cache:sync"],
@@ -283,9 +284,29 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
   }
 
   const proc = Bun.spawn(getMcpCliInvocation(cmdArgs), {
+    stdin: name === "workflowy_batch" ? "pipe" : "ignore",
     stdout: "pipe",
     stderr: "pipe",
   });
+
+  if (name === "workflowy_batch") {
+    const stdin = proc.stdin;
+    if (!stdin) {
+      return {
+        text: JSON.stringify({
+          error: {
+            code: "tool_call_failed",
+            message: "workflowy_batch could not open stdin for batch input",
+            tool: name,
+          },
+        }, null, 2),
+        isError: true,
+      };
+    }
+
+    stdin.write(JSON.stringify(args.ops ?? []));
+    stdin.end();
+  }
 
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
@@ -568,7 +589,7 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
       result: {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "workflowy", version: "3.0.1" },
+        serverInfo: { name: "workflowy", version: "3.0.2" },
         ...(instructions ? { instructions } : {}),
       },
     };

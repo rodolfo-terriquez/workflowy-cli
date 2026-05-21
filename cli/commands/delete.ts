@@ -14,15 +14,17 @@ export function registerNodeDelete(program: Command): void {
     .command("node:delete <nodeIdOrPath>")
     .description("Delete a node")
     .option("--format <type>", "Output format (outline|json)")
+    .option("--yes", "Skip confirmation prompt")
     .action(
       async (
         nodeIdOrPath: string,
-        opts: { format?: string }
+        opts: { format?: string; yes?: boolean }
       ) => {
+        const nodeId = resolveNodeArg(nodeIdOrPath);
+        await confirmDelete(nodeIdOrPath, nodeId, !!opts.yes);
+
         const token = requireToken();
         const api = new WorkflowyAPI(token);
-
-        const nodeId = resolveNodeArg(nodeIdOrPath);
         const parentId = await resolveDeleteRootId(api, nodeId);
 
         await api.readDoc(parentId, 1);
@@ -39,7 +41,7 @@ export function registerNodeDelete(program: Command): void {
             resolved_id: nodeId,
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.0.1",
+            wf_version: "3.0.2",
           };
           const cacheAge = getCacheAgeSeconds();
           if (cacheAge !== null) {
@@ -85,4 +87,17 @@ function resolveNodeArg(input: string): string {
   }
 
   exitWithError("node_not_found", `Node "${input}" not found`, "Use a hex node ID or run `wf cache:sync` first");
+}
+
+async function confirmDelete(target: string, nodeId: string, skipConfirmation: boolean): Promise<void> {
+  if (skipConfirmation || isAgentMode()) return;
+
+  const node = getNodeById(nodeId);
+  const name = node ? node.name.replace(/<[^>]+>/g, "").trim() : target;
+
+  exitWithError(
+    "confirmation_required",
+    `Refusing to delete "${name || target}" without confirmation.`,
+    "Re-run with `--yes` to confirm deletion."
+  );
 }

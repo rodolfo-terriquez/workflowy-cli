@@ -176,7 +176,7 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
       id: 1,
       result: {
         protocolVersion: "2024-11-05",
-        serverInfo: { name: "workflowy", version: "3.0.1" },
+        serverInfo: { name: "workflowy", version: "3.0.2" },
         capabilities: { tools: {} },
       },
     });
@@ -422,6 +422,40 @@ test("saves bookmarks through MCP and resolves them in reads", async () => {
     expect(readResponse.result.isError).toBe(false);
     expect(readResponse.result.content[0]?.text).toContain("\"resolved_id\": \"projects-1\"");
     expect(readResponse.result.content[0]?.text).toContain("Projects");
+  });
+});
+
+test("runs batch through MCP instead of returning unknown_tool", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 8,
+      method: "tools/call",
+      params: {
+        name: "workflowy_batch",
+        arguments: {
+          ops: [
+            { op: "add", to: "@inbox", text: "Created from MCP batch" },
+          ],
+        },
+      },
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${message}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+
+    const response = parseJsonLine<{
+      result: { isError?: boolean; content: Array<{ type: string; text: string }> };
+    }>(stdout);
+
+    expect(response.result.isError).toBe(false);
+    expect(response.result.content[0]?.text).toContain("\"command\": \"batch\"");
+    expect(response.result.content[0]?.text).toContain("\"total_operations\": 1");
+    expect(response.result.content[0]?.text).not.toContain("unknown_tool");
   });
 });
 

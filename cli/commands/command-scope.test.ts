@@ -92,12 +92,37 @@ test("search --target scopes cache search to the requested subtree", async () =>
   expect(parsed.nodes.map((node) => node.id)).toEqual(["launch-plan"]);
 });
 
-async function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+test("node:delete requires --yes in non-interactive mode", async () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: {
+      default: { name: "default", token: "token-default" },
+    },
+  });
+
+  cacheModule.replaceAllNodes([
+    { id: "root-1", name: "Inbox", parent_id: null, modifiedAt: 100 },
+    { id: "child-1", name: "Delete me", parent_id: "root-1", modifiedAt: 101 },
+  ]);
+
+  const result = await runCli(["node:delete", "Delete me"], { CI: "", WF_AGENT: "", TERM: "xterm-256color" });
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("Refusing to delete");
+  expect(result.stderr).toContain("--yes");
+});
+
+async function runCli(
+  args: string[],
+  envOverrides: Record<string, string> = {},
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn(["bun", "run", join(import.meta.dir, "../wf.ts"), ...args], {
+    stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
-    env: process.env,
+    env: { ...process.env, ...envOverrides },
   });
+
+  proc.stdin.end();
 
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),

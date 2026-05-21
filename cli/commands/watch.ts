@@ -108,7 +108,7 @@ export function registerWatch(program: Command): void {
     .action(() => {
       if (!existsSync(PID_PATH)) {
         if (isAgentMode()) {
-          console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: "3.0.1" }, running: false }));
+          console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: "3.0.2" }, running: false }));
         } else {
           console.log("\n  Watch daemon: not running.\n");
         }
@@ -118,14 +118,14 @@ export function registerWatch(program: Command): void {
       if (Number.isNaN(pid) || !isProcessRunning(pid)) {
         unlinkSync(PID_PATH);
         if (isAgentMode()) {
-          console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: "3.0.1" }, running: false }));
+          console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: "3.0.2" }, running: false }));
         } else {
           console.log("\n  Watch daemon: not running.\n");
         }
         return;
       }
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: "3.0.1" }, running: true, pid }));
+        console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: "3.0.2" }, running: true, pid }));
       } else {
         console.log(`\n  Watch daemon: running (PID ${pid})\n`);
       }
