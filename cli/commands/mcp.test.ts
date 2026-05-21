@@ -196,7 +196,7 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
       id: 1,
       result: {
         protocolVersion: "2024-11-05",
-        serverInfo: { name: "workflowy", version: "3.0.5" },
+        serverInfo: { name: "workflowy", version: "3.0.6" },
         capabilities: { tools: {} },
       },
     });
@@ -274,6 +274,40 @@ test("responds to content-length framed initialize messages over stdio", async (
     };
 
     expect(response.result.serverInfo.name).toBe("workflowy");
+  });
+});
+
+test("tools/list explains that workflowy_batch add text may contain full multi-line markdown", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 13,
+      method: "tools/list",
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${message}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+
+    const response = parseJsonLine<{
+      result: {
+        tools: Array<{
+          name: string;
+          description: string;
+          inputSchema: {
+            properties?: Record<string, { description?: string }>;
+          };
+        }>;
+      };
+    }>(stdout);
+
+    const batchTool = response.result.tools.find((tool) => tool.name === "workflowy_batch");
+    expect(batchTool).toBeDefined();
+    expect(batchTool?.description).toContain("multi-line markdown document");
+    expect(batchTool?.inputSchema.properties?.ops?.description).toContain("full multi-line markdown document");
   });
 });
 

@@ -72,7 +72,7 @@ export function registerNodeAdd(program: Command): void {
             resolved_id: resolvedId,
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.0.5",
+            wf_version: "3.0.6",
           };
           const cacheAge = getCacheAgeSeconds();
           if (cacheAge !== null) {

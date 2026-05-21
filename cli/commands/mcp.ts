@@ -217,11 +217,55 @@ const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "workflowy_batch",
-    description: "Execute multiple operations in a batch",
+    description: "Execute multiple operations in a batch. For markdown content, one add op may contain the entire multi-line markdown document in text; do not split it into one op per line unless you want separate nodes.",
     inputSchema: {
       type: "object",
       properties: {
-        ops: { type: "array", description: "Array of operations", items: { type: "object" } },
+        ops: {
+          type: "array",
+          description: "Array of operations. A single add op may include a full multi-line markdown document in text.",
+          items: {
+            type: "object",
+            properties: {
+              op: {
+                type: "string",
+                enum: ["capture", "add", "complete", "uncomplete", "move", "delete"],
+                description: "Operation type.",
+              },
+              text: {
+                type: "string",
+                description: "Text for add/capture. This may be a full multi-line markdown document; it does not need to be split line by line.",
+              },
+              to: {
+                type: "string",
+                description: "Target parent for add/capture/move. Accepts @targets, paths, or node IDs.",
+              },
+              target: {
+                type: "string",
+                description: "Alternate target parent field. Accepts @targets, paths, or node IDs.",
+              },
+              ref: {
+                type: "string",
+                description: "Node ID for complete, uncomplete, move, or delete operations.",
+              },
+              type: {
+                type: "string",
+                enum: ["bullet", "todo", "h1", "h2", "h3"],
+                description: "Optional node layout for add/capture.",
+              },
+              note: {
+                type: "string",
+                description: "Optional note content for add/capture.",
+              },
+              position: {
+                type: "string",
+                enum: ["top", "bottom"],
+                description: "Optional insert/move position.",
+              },
+            },
+            required: ["op"],
+          },
+        },
       },
       required: ["ops"],
     },
@@ -589,7 +633,7 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
       result: {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "workflowy", version: "3.0.5" },
+        serverInfo: { name: "workflowy", version: "3.0.6" },
         ...(instructions ? { instructions } : {}),
       },
     };

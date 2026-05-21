@@ -47,7 +47,7 @@ export function registerLogin(program: Command): void {
           console.log(`  Account saved as "${opts.account}"\n`);
         } else {
           console.log(JSON.stringify({
-            meta: { command: "login", wf_version: "3.0.5" },
+            meta: { command: "login", wf_version: "3.0.6" },
             message: "Authenticated successfully",
             account: opts.account,
           }));

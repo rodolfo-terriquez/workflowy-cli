@@ -103,7 +103,7 @@ export function registerBatch(program: Command): void {
       }
 
       console.log(JSON.stringify({
-        meta: { command: "batch", timestamp: new Date().toISOString(), wf_version: "3.0.5" },
+        meta: { command: "batch", timestamp: new Date().toISOString(), wf_version: "3.0.6" },
         results,
         total_operations: ops.length,
         api_calls: grouped.size,

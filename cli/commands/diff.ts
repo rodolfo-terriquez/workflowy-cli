@@ -77,7 +77,7 @@ export function registerCacheDiff(program: Command): void {
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "cache:diff", timestamp: new Date().toISOString(), since: opts.since ?? null, wf_version: "3.0.5" },
+          meta: { command: "cache:diff", timestamp: new Date().toISOString(), since: opts.since ?? null, wf_version: "3.0.6" },
           added: added.map((a) => ({ id: a.id, name: cleanHtml(a.name) })),
           modified: modified.map((m) => ({ id: m.id, name: cleanHtml(m.name), changes: m.changes })),
           deleted: deleted.map((d) => ({ id: d.id, name: cleanHtml(d.name) })),
