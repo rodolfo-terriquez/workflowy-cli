@@ -34,6 +34,26 @@ async function runMcpServer(
   return { code, stdout, stderr };
 }
 
+function parseJsonLines<T>(stdout: string): T[] {
+  return stdout
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as T);
+}
+
+interface ToolCallResponse {
+  id: number;
+  result?: {
+    isError?: boolean;
+    content: Array<{ type: string; text: string }>;
+  };
+  error?: {
+    code: number;
+    message: string;
+  };
+}
+
 function parseJsonLine<T>(stdout: string): T {
   return JSON.parse(stdout.trim()) as T;
 }
@@ -176,7 +196,7 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
       id: 1,
       result: {
         protocolVersion: "2024-11-05",
-        serverInfo: { name: "workflowy", version: "3.0.3" },
+        serverInfo: { name: "workflowy", version: "3.0.4" },
         capabilities: { tools: {} },
       },
     });
@@ -485,5 +505,85 @@ test("returns MCP tool errors instead of blank text when the CLI call fails", as
     expect(response.result.isError).toBe(true);
     expect(response.result.content[0]?.text.length).toBeGreaterThan(0);
     expect(response.result.content[0]?.text).toContain("node_not_found");
+  });
+});
+
+test("keeps serving requests after an unknown tool call in the same session", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    const unknownTool = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 9,
+      method: "tools/call",
+      params: {
+        name: "workflowy_missing_tool",
+        arguments: {},
+      },
+    });
+
+    const validTool = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 10,
+      method: "tools/call",
+      params: {
+        name: "workflowy_targets",
+        arguments: {},
+      },
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${unknownTool}\n${validTool}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+
+    const responses = parseJsonLines<ToolCallResponse>(stdout);
+
+    expect(responses).toHaveLength(2);
+    expect(responses[0]?.id).toBe(9);
+    expect(responses[0]?.result?.isError).toBe(true);
+    expect(responses[0]?.result?.content[0]?.text).toContain("unknown_tool");
+
+    expect(responses[1]?.id).toBe(10);
+    expect(responses[1]?.result?.isError).toBe(false);
+    expect(responses[1]?.result?.content[0]?.text).toContain("\"command\": \"targets\"");
+  });
+});
+
+test("returns invalid params without crashing when tools/call params are missing", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    const invalidCall = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 11,
+      method: "tools/call",
+    });
+
+    const validTool = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 12,
+      method: "tools/call",
+      params: {
+        name: "workflowy_targets",
+        arguments: {},
+      },
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${invalidCall}\n${validTool}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+
+    const responses = parseJsonLines<ToolCallResponse>(stdout);
+
+    expect(responses).toHaveLength(2);
+    expect(responses[0]?.id).toBe(11);
+    expect(responses[0]?.error?.code).toBe(-32602);
+    expect(responses[0]?.error?.message).toContain("Invalid params");
+
+    expect(responses[1]?.id).toBe(12);
+    expect(responses[1]?.result?.isError).toBe(false);
+    expect(responses[1]?.result?.content[0]?.text).toContain("\"command\": \"targets\"");
   });
 });

@@ -386,7 +386,7 @@ async function startStdioServer(tools: McpTool[]): Promise<void> {
     buffer = rest;
 
     for (const message of messages) {
-      const response = await handleMcpMessage(message.payload, tools);
+      const response = await safelyHandleMcpMessage(message.payload, tools);
       if (!response) continue;
 
       const responseStr = JSON.stringify(response);
@@ -552,7 +552,7 @@ async function startHttpSseServer(port: number, tools: McpTool[]): Promise<void>
 
         const controller = sessions.get(sessionId)!;
         const body = await req.json() as Record<string, unknown>;
-        const response = await handleMcpMessage(body, tools);
+        const response = await safelyHandleMcpMessage(body, tools);
 
         if (response) {
           const responseStr = JSON.stringify(response);
@@ -589,7 +589,7 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
       result: {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "workflowy", version: "3.0.3" },
+        serverInfo: { name: "workflowy", version: "3.0.4" },
         ...(instructions ? { instructions } : {}),
       },
     };
@@ -614,9 +614,28 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
   }
 
   if (method === "tools/call") {
-    const params = msg.params as { name: string; arguments?: Record<string, unknown> };
-    const toolName = params.name;
-    const args = params.arguments ?? {};
+    const params = msg.params;
+    if (!params || typeof params !== "object") {
+      return {
+        jsonrpc: "2.0",
+        id,
+        error: { code: -32602, message: "Invalid params: tools/call requires a params object" },
+      };
+    }
+
+    const toolParams = params as { name?: unknown; arguments?: unknown };
+    if (typeof toolParams.name !== "string" || toolParams.name.length === 0) {
+      return {
+        jsonrpc: "2.0",
+        id,
+        error: { code: -32602, message: "Invalid params: tools/call requires a tool name" },
+      };
+    }
+
+    const args = toolParams.arguments && typeof toolParams.arguments === "object"
+      ? toolParams.arguments as Record<string, unknown>
+      : {};
+    const toolName = toolParams.name;
 
     const result = await handleToolCall(toolName, args);
 
@@ -635,4 +654,25 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
     id,
     error: { code: -32601, message: `Method not found: ${method}` },
   };
+}
+
+async function safelyHandleMcpMessage(
+  msg: Record<string, unknown>,
+  tools: McpTool[],
+): Promise<Record<string, unknown> | null> {
+  try {
+    return await handleMcpMessage(msg, tools);
+  } catch (error) {
+    const id = msg.id ?? null;
+    const message = error instanceof Error ? error.message : String(error);
+
+    return {
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: -32603,
+        message: `Internal error: ${message}`,
+      },
+    };
+  }
 }

@@ -69,7 +69,7 @@ export function registerNodeMove(program: Command): void {
             resolved_id: resolved.id,
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.0.3",
+            wf_version: "3.0.4",
           };
           if (cacheAge !== null) {
             meta.cache_age_seconds = cacheAge;

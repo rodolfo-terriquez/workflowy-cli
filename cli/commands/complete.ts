@@ -45,7 +45,7 @@ export function registerNodeComplete(program: Command): void {
             resolved_id: nodeId,
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.0.3",
+            wf_version: "3.0.4",
           };
           const cacheAge = getCacheAgeSeconds();
           if (cacheAge !== null) {
