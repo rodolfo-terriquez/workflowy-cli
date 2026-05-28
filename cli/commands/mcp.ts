@@ -2,9 +2,10 @@ import type { Command } from "commander";
 import chalk from "chalk";
 import { isAgentMode } from "../agent.ts";
 import { loadConfig } from "../shared/config.ts";
-import { getChildren, getNodeById, type CachedNode } from "../shared/cache.ts";
+import { getCacheNodeCount, getChildren, getNodeById, type CachedNode } from "../shared/cache.ts";
 import { cleanHtml } from "../shared/nodes.ts";
 import { resolveCacheTargetReference } from "../shared/path.ts";
+import { doSync } from "./sync.ts";
 
 interface McpTool {
   name: string;
@@ -70,6 +71,8 @@ Before making tool calls, follow this checklist:
 - \`workflowy_context\` is often better than a deep read when you need nearby siblings and ancestors.
 - Use smaller reads first, then expand depth only if needed.`;
 
+let mcpInitializeSyncPromise: Promise<void> | null = null;
+
 function getInitializeInstructions(maxDepth = 4): string {
   const parts = [DEFAULT_MCP_INSTRUCTIONS];
   const userInstructions = getUserInitializeInstructions(maxDepth);
@@ -98,6 +101,39 @@ function resolveInstructionsNode(configured: string): CachedNode | null {
   if (!resolved) return null;
 
   return getNodeById(resolved.id);
+}
+
+export function getMcpInitializeSyncReason(): "cache_empty" | "instructions_unresolved" | null {
+  if (getCacheNodeCount() === 0) {
+    return "cache_empty";
+  }
+
+  const configured = loadConfig().mcp?.instructionsNode?.trim();
+  if (!configured) return null;
+
+  return resolveInstructionsNode(configured) ? null : "instructions_unresolved";
+}
+
+export async function ensureMcpCacheReadyForInitialize(
+  syncFn: (opts?: { silent?: boolean }) => Promise<unknown> = doSync,
+): Promise<boolean> {
+  const reason = getMcpInitializeSyncReason();
+  if (!reason) return false;
+
+  if (!mcpInitializeSyncPromise) {
+    mcpInitializeSyncPromise = (async () => {
+      try {
+        await syncFn({ silent: true });
+      } catch {
+        // Best-effort warmup only. MCP initialization should still succeed even if sync fails.
+      } finally {
+        mcpInitializeSyncPromise = null;
+      }
+    })();
+  }
+
+  await mcpInitializeSyncPromise;
+  return true;
 }
 
 function flattenInstructionsNode(node: CachedNode, depth: number, maxDepth: number): string[] {
@@ -681,6 +717,7 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
   const id = msg.id;
 
   if (method === "initialize") {
+    await ensureMcpCacheReadyForInitialize();
     const instructions = getInitializeInstructions();
 
     return {

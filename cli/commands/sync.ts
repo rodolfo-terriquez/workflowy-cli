@@ -51,12 +51,13 @@ export function registerCacheSync(program: Command): void {
     });
 }
 
-export async function doSync(): Promise<{ nodeCount: number; syncedAt: number }> {
+export async function doSync(opts: { silent?: boolean } = {}): Promise<{ nodeCount: number; syncedAt: number }> {
   const token = requireToken();
   const api = new WorkflowyAPI(token);
+  const silent = opts.silent ?? false;
 
   const start = Date.now();
-  if (!isAgentMode()) process.stdout.write(chalk.dim("  Syncing..."));
+  if (!silent && !isAgentMode()) process.stdout.write(chalk.dim("  Syncing..."));
 
   const allNodes = await api.exportAll();
   const { nodeCount, syncedAt } = replaceAllNodes(allNodes);
@@ -67,16 +68,18 @@ export async function doSync(): Promise<{ nodeCount: number; syncedAt: number }>
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
 
-  if (isAgentMode()) {
-    console.log(JSON.stringify({
-      meta: { command: "cache:sync", timestamp: new Date().toISOString(), wf_version: "3.0.6" },
-      message: `Synced ${nodeCount} nodes`,
-      node_count: nodeCount,
-      synced_at: syncedAt,
-      elapsed_seconds: Number(elapsed),
-    }, null, 2));
-  } else {
-    process.stdout.write(`\r  ${chalk.green("✓")} Synced ${chalk.bold(String(nodeCount))} nodes in ${elapsed}s\n\n`);
+  if (!silent) {
+    if (isAgentMode()) {
+      console.log(JSON.stringify({
+        meta: { command: "cache:sync", timestamp: new Date().toISOString(), wf_version: "3.0.6" },
+        message: `Synced ${nodeCount} nodes`,
+        node_count: nodeCount,
+        synced_at: syncedAt,
+        elapsed_seconds: Number(elapsed),
+      }, null, 2));
+    } else {
+      process.stdout.write(`\r  ${chalk.green("✓")} Synced ${chalk.bold(String(nodeCount))} nodes in ${elapsed}s\n\n`);
+    }
   }
 
   return { nodeCount, syncedAt };

@@ -353,7 +353,7 @@ wf mcp --port 3399
 
 #### MCP instructions
 
-`wf mcp` always sends built-in bootstrap instructions during MCP `initialize` so agents know how to use the server well.
+`wf mcp` always sends built-in bootstrap instructions during MCP `initialize` so agents know how to use the server well. On first MCP use for an account, it will also try a best-effort cache warmup when the active account has no usable cache yet, or when a configured instructions node cannot be resolved from cache.
 
 You can also append your own custom instructions from a WorkFlowy node or subtree:
 

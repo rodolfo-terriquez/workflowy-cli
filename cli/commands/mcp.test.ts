@@ -6,7 +6,7 @@ import { join } from "path";
 import { resetCacheDb, replaceAllNodes } from "../shared/cache.ts";
 import { saveConfig } from "../shared/config.ts";
 import { cacheTargets, resetDb, saveBookmark } from "../shared/db.ts";
-import { getMcpCliInvocation } from "./mcp.ts";
+import { ensureMcpCacheReadyForInitialize, getMcpCliInvocation, getMcpInitializeSyncReason } from "./mcp.ts";
 
 const CWD = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -160,6 +160,76 @@ async function withTempWorkflowyConfig<T>(fn: (configDir: string) => Promise<T>)
     rmSync(configDir, { recursive: true, force: true });
   }
 }
+
+test("detects when MCP initialize should warm the cache for the active account", async () => {
+  await withTempWorkflowyConfig(async () => {
+    saveConfig({
+      activeAccount: "other",
+      accounts: {
+        default: { name: "default", token: "test-token" },
+        other: { name: "other", token: "other-token" },
+      },
+    });
+
+    expect(getMcpInitializeSyncReason()).toBe("cache_empty");
+  });
+});
+
+test("detects when MCP initialize should re-sync to resolve custom instructions", async () => {
+  await withTempWorkflowyConfig(async () => {
+    saveConfig({
+      activeAccount: "default",
+      accounts: {
+        default: { name: "default", token: "test-token" },
+      },
+      mcp: {
+        instructionsNode: "missing-node",
+      },
+    });
+
+    expect(getMcpInitializeSyncReason()).toBe("instructions_unresolved");
+  });
+});
+
+test("runs MCP initialize cache warmup only when needed", async () => {
+  await withTempWorkflowyConfig(async () => {
+    let syncCalls = 0;
+
+    await ensureMcpCacheReadyForInitialize(async () => {
+      syncCalls += 1;
+      return {};
+    });
+
+    expect(syncCalls).toBe(0);
+
+    saveConfig({
+      activeAccount: "default",
+      accounts: {
+        default: { name: "default", token: "test-token" },
+      },
+      mcp: {
+        instructionsNode: "missing-node",
+      },
+    });
+
+    await ensureMcpCacheReadyForInitialize(async () => {
+      syncCalls += 1;
+      saveConfig({
+        activeAccount: "default",
+        accounts: {
+          default: { name: "default", token: "test-token" },
+        },
+        mcp: {
+          instructionsNode: "instructions-1",
+        },
+      });
+      return {};
+    });
+
+    expect(syncCalls).toBe(1);
+    expect(getMcpInitializeSyncReason()).toBe(null);
+  });
+});
 
 test("responds to newline-delimited initialize messages over stdio", async () => {
   await withTempWorkflowyConfig(async (configDir) => {
