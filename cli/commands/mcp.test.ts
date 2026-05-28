@@ -188,18 +188,18 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
         protocolVersion: string;
         serverInfo: { name: string; version: string };
         capabilities: { tools: Record<string, unknown> };
+        instructions?: string;
       };
     };
 
-    expect(response).toEqual({
-      jsonrpc: "2.0",
-      id: 1,
-      result: {
-        protocolVersion: "2024-11-05",
-        serverInfo: { name: "workflowy", version: "3.0.6" },
-        capabilities: { tools: {} },
-      },
-    });
+    expect(response.jsonrpc).toBe("2.0");
+    expect(response.id).toBe(1);
+    expect(response.result.protocolVersion).toBe("2024-11-05");
+    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.0.6" });
+    expect(response.result.capabilities).toEqual({ tools: {} });
+    expect(response.result.instructions).toContain("## STOP — Read This First");
+    expect(response.result.instructions).toContain("workflowy_targets");
+    expect(response.result.instructions).toContain("workflowy_batch");
   });
 });
 
@@ -237,10 +237,58 @@ test("includes configured instructions in the initialize response", async () => 
       result: { instructions?: string };
     };
 
+    expect(response.result.instructions).toContain("## STOP — Read This First");
+    expect(response.result.instructions).toContain("## User custom instructions");
     expect(response.result.instructions).toContain("Agent instructions");
     expect(response.result.instructions).toContain("Follow the user instructions exactly.");
     expect(response.result.instructions).toContain("- Use targets first");
     expect(response.result.instructions).toContain("Prefer @targets and cached paths before raw ids.");
+  });
+});
+
+test("resolves configured instructions from bookmark targets", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    saveBookmark("default", {
+      name: "guide",
+      nodeId: "instructions-1",
+      context: "Workflow guidance",
+    });
+
+    saveConfig({
+      activeAccount: "default",
+      accounts: {
+        default: { name: "default", token: "test-token" },
+      },
+      mcp: {
+        instructionsNode: "@guide",
+      },
+    });
+
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 11,
+      method: "initialize",
+      params: {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "test", version: "1" },
+      },
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${message}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+
+    const response = JSON.parse(stdout.trim()) as {
+      result: { instructions?: string };
+    };
+
+    expect(response.result.instructions).toContain("## User custom instructions");
+    expect(response.result.instructions).toContain("Agent instructions");
+    expect(response.result.instructions).toContain("Resync after many writes");
   });
 });
 

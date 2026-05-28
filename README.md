@@ -351,6 +351,20 @@ wf mcp --port 3399
 
 `wf mcp` supports stdio transport by default and HTTP/SSE when `--port` is provided.
 
+#### MCP instructions
+
+`wf mcp` always sends built-in bootstrap instructions during MCP `initialize` so agents know how to use the server well.
+
+You can also append your own custom instructions from a WorkFlowy node or subtree:
+
+```bash
+wf config:set mcp.instructionsNode "@inbox/Agent instructions"
+# or use a stable node id instead of a path
+wf config:set mcp.instructionsNode <node-id>
+```
+
+Those instructions are loaded from the local cache when the MCP session starts, so run `wf cache:sync` after editing that subtree if you want the latest content reflected in new MCP sessions.
+
 ## Agent Mode
 
 Use `--agent` for JSON output. Agent mode is also enabled when:

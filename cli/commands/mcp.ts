@@ -4,7 +4,7 @@ import { isAgentMode } from "../agent.ts";
 import { loadConfig } from "../shared/config.ts";
 import { getChildren, getNodeById, type CachedNode } from "../shared/cache.ts";
 import { cleanHtml } from "../shared/nodes.ts";
-import { resolvePathOrId } from "../shared/path.ts";
+import { resolveCacheTargetReference } from "../shared/path.ts";
 
 interface McpTool {
   name: string;
@@ -25,7 +25,63 @@ export function getMcpCliInvocation(cmdArgs: string[], mainPath = Bun.main, exec
   return [execPath, "--agent", ...cmdArgs];
 }
 
-function getInitializeInstructions(maxDepth = 4): string | null {
+const DEFAULT_MCP_INSTRUCTIONS = `This MCP server connects to a user's WorkFlowy account through \`wf\`, a CLI designed for agents, automations, and power users. WorkFlowy is a nested outline where information is stored as nodes with text, optional notes, and children.
+
+## STOP — Read This First
+
+Before making tool calls, follow this checklist:
+
+1. Prefer \`workflowy_targets\` and/or \`list_bookmarks\` early when you need to discover saved locations, bookmarks, or user guidance.
+2. Prefer \`@targets\`, bookmarks, and cached paths before asking for or relying on raw node IDs.
+3. Use \`workflowy_read\` or \`workflowy_context\` before structural or destructive changes when surrounding context matters.
+4. Use \`workflowy_batch\` for grouped changes. A single add operation may contain a full multi-line markdown document in \`text\`.
+5. If cached paths or lookups seem stale or missing, call \`workflowy_sync\` and retry.
+6. If the user shares a WorkFlowy link, extract the hex ID after \`#/\` and use that as the node ID.
+
+## Key Concepts
+
+- Read results use a stable JSON shape with \`meta\`, \`node\`, and \`children[]\`.
+- Targets may be built-in locations such as \`@inbox\`, \`@today\`, \`@tomorrow\`, \`@calendar\`, and \`@next-week\`.
+- Targets may also be bookmarks, raw node IDs, or cached paths such as \`@inbox/Projects/Q2\`.
+- Most reads are cache-first. Some tools support live API reads or searches when needed.
+- Node names and paths may be ambiguous. Do not guess when multiple matches exist.
+
+## Common Workflows
+
+- To inspect a subtree: use \`workflowy_read\`.
+- To understand a node in context: use \`workflowy_context\`.
+- To find something by text: use \`workflowy_search\`.
+- To add a new node: use \`workflowy_add\`.
+- To rename or change a note: use \`workflowy_update\`.
+- To move, complete, or delete multiple things together: prefer \`workflowy_batch\`.
+
+## Common Mistakes to Avoid
+
+- Do not assume the cache is current if a path lookup fails; try \`workflowy_sync\`.
+- Do not guess between ambiguous matches; ask or disambiguate.
+- Do not split multi-line markdown into many add operations unless you want separate nodes.
+- Do not use raw node IDs when a stable target or cached path is available.
+- Do not make multiple write calls when one batch call will do.
+
+## Tips
+
+- \`workflowy_targets\` helps you learn what the account exposes.
+- \`list_bookmarks\` may include bookmark context notes that help with navigation.
+- \`workflowy_context\` is often better than a deep read when you need nearby siblings and ancestors.
+- Use smaller reads first, then expand depth only if needed.`;
+
+function getInitializeInstructions(maxDepth = 4): string {
+  const parts = [DEFAULT_MCP_INSTRUCTIONS];
+  const userInstructions = getUserInitializeInstructions(maxDepth);
+
+  if (userInstructions) {
+    parts.push(`## User custom instructions\n\n${userInstructions}`);
+  }
+
+  return parts.join("\n\n").trim();
+}
+
+function getUserInitializeInstructions(maxDepth = 4): string | null {
   const configured = loadConfig().mcp?.instructionsNode?.trim();
   if (!configured) return null;
 
@@ -38,10 +94,10 @@ function getInitializeInstructions(maxDepth = 4): string | null {
 }
 
 function resolveInstructionsNode(configured: string): CachedNode | null {
-  const byId = getNodeById(configured);
-  if (byId) return byId;
+  const resolved = resolveCacheTargetReference(configured);
+  if (!resolved) return null;
 
-  return resolvePathOrId(configured)?.node ?? null;
+  return getNodeById(resolved.id);
 }
 
 function flattenInstructionsNode(node: CachedNode, depth: number, maxDepth: number): string[] {
@@ -634,7 +690,7 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
         serverInfo: { name: "workflowy", version: "3.0.6" },
-        ...(instructions ? { instructions } : {}),
+        instructions,
       },
     };
   }
