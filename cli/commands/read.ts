@@ -25,6 +25,7 @@ import { startOutputCapture, handleCopyFlag } from "../shared/copy-wrapper.ts";
 export function registerNodeRead(program: Command): void {
   program
     .command("node:read [target]")
+    .alias("read")
     .description("Read a node and its children")
     .option("--depth <n>", "Max depth to read", parseInt)
     .option("--format <type>", "Output format (outline|json)")

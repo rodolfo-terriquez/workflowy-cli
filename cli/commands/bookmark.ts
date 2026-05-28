@@ -13,6 +13,7 @@ import { startOutputCapture, handleCopyFlag } from "../shared/copy-wrapper.ts";
 export function registerBookmarkCommands(program: Command): void {
   program
     .command("bookmark:list")
+    .alias("bookmarks")
     .description("List saved local bookmarks")
     .option("--format <type>", "Output format (outline|json)")
     .option("--copy", "Copy output to clipboard")

@@ -53,6 +53,7 @@ import { registerWorkflow } from "./commands/workflow.ts";
 
 // Utilities
 import { registerDoctor } from "./commands/doctor.ts";
+import { registerAuth } from "./commands/auth.ts";
 import { registerCompletions } from "./commands/completions.ts";
 import { registerLogin } from "./commands/login.ts";
 import { registerMcp } from "./commands/mcp.ts";
@@ -88,7 +89,7 @@ function printColoredHelp(): void {
     {
       title: "Node",
       commands: [
-        ["node:read [target]",         "Read a node and its children"],
+        ["node:read [target]",         "Read a node and its children (alias: read)"],
         ["node:add <target> <text>",   "Add a child node to a target"],
         ["node:move <node> <target>",  "Move a node to a different parent"],
         ["node:complete <node>",       "Mark a todo as complete (--undo to uncheck)"],
@@ -108,7 +109,7 @@ function printColoredHelp(): void {
         ["search <query>",            "Full-text search (--smart for AI rerank)"],
         ["tags",                       "List all #hashtags with counts"],
         ["targets",                    "List all available @targets"],
-        ["bookmark:list",              "List saved local bookmarks"],
+        ["bookmark:list",              "List saved local bookmarks (alias: bookmarks)"],
         ["bookmark:save <name> <target>","Save a local bookmark"],
         ["history",                    "Recently accessed nodes"],
       ],
@@ -116,7 +117,7 @@ function printColoredHelp(): void {
     {
       title: "Cache",
       commands: [
-        ["cache:sync",                 "Pull full tree into local cache"],
+        ["cache:sync",                 "Pull full tree into local cache (alias: sync)"],
         ["cache:diff",                 "What changed since last sync"],
       ],
     },
@@ -162,6 +163,8 @@ function printColoredHelp(): void {
         ["batch",                      "Execute a JSON array of ops from stdin"],
         ["version",                    "Show CLI version and git revision"],
         ["login [apiKey]",             "Authenticate with WorkFlowy"],
+        ["status",                     "Diagnose common setup issues (alias: doctor)"],
+        ["auth status",                "Show authentication and setup status"],
         ["self:update",                "Pull latest git changes and rebuild wf"],
         ["doctor",                     "Diagnose common setup issues"],
         ["completions install",        "Install shell completions (bash/zsh/fish)"],
@@ -194,6 +197,8 @@ const program = new Command();
 program
   .name("wf")
   .description("WorkFlowy CLI — for agents, automations, and power users")
+  .showSuggestionAfterError()
+  .showHelpAfterError("\nRun `wf --help` to see available commands.")
   .option("-v, --version", "Show version number")
   .option("--agent", "Enable agent mode (JSON output, no colors)")
   .option("--copy", "Copy output to clipboard")
@@ -253,6 +258,7 @@ registerWorkflow(program);
 // Utilities
 registerMcp(program);
 registerDoctor(program);
+registerAuth(program);
 registerCompletions(program);
 registerLogin(program);
 registerSelfUpdate(program);

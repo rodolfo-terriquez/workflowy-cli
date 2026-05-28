@@ -479,6 +479,42 @@ test("returns non-empty MCP tool content for cache-backed reads", async () => {
   });
 });
 
+test("tools/list includes short alias tools and status", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 4,
+      method: "tools/list",
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${message}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+
+    const response = parseJsonLine<{
+      result: { tools: Array<{ name: string }> };
+    }>(stdout);
+
+    const toolNames = response.result.tools.map((tool) => tool.name);
+    expect(toolNames).toContain("read");
+    expect(toolNames).toContain("add");
+    expect(toolNames).toContain("find");
+    expect(toolNames).toContain("targets");
+    expect(toolNames).toContain("search");
+    expect(toolNames).toContain("move");
+    expect(toolNames).toContain("complete");
+    expect(toolNames).toContain("update");
+    expect(toolNames).toContain("context");
+    expect(toolNames).toContain("batch");
+    expect(toolNames).toContain("bookmarks");
+    expect(toolNames).toContain("sync");
+    expect(toolNames).toContain("status");
+  });
+});
+
 test("returns available targets through MCP", async () => {
   await withTempWorkflowyConfig(async (configDir) => {
     const message = JSON.stringify({
@@ -535,6 +571,170 @@ test("returns saved bookmarks through MCP", async () => {
     expect(response.result.content[0]?.text).toContain("\"command\": \"bookmark:list\"");
     expect(response.result.content[0]?.text).toContain("\"name\": \"home\"");
     expect(response.result.content[0]?.text).toContain("Primary inbox bookmark");
+  });
+});
+
+test("returns saved bookmarks through the short MCP alias", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 6,
+      method: "tools/call",
+      params: {
+        name: "bookmarks",
+        arguments: {},
+      },
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${message}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+
+    const response = parseJsonLine<{
+      result: { isError?: boolean; content: Array<{ type: string; text: string }> };
+    }>(stdout);
+
+    expect(response.result.isError).toBe(false);
+    expect(response.result.content[0]?.text).toContain("\"command\": \"bookmark:list\"");
+    expect(response.result.content[0]?.text).toContain("\"name\": \"home\"");
+  });
+});
+
+test("reads nodes through the short MCP alias", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 7,
+      method: "tools/call",
+      params: {
+        name: "read",
+        arguments: { target: "@inbox" },
+      },
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${message}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+
+    const response = parseJsonLine<{
+      result: { isError?: boolean; content: Array<{ type: string; text: string }> };
+    }>(stdout);
+
+    expect(response.result.isError).toBe(false);
+    expect(response.result.content[0]?.text).toContain("\"command\": \"node:read\"");
+    expect(response.result.content[0]?.text).toContain("\"resolved_id\": \"root-1\"");
+  });
+});
+
+test("finds nodes through the short MCP alias", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 8,
+      method: "tools/call",
+      params: {
+        name: "find",
+        arguments: { query: "Search target" },
+      },
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${message}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+
+    const response = parseJsonLine<{
+      result: { isError?: boolean; content: Array<{ type: string; text: string }> };
+    }>(stdout);
+
+    expect(response.result.isError).toBe(false);
+    expect(response.result.content[0]?.text).toContain("\"command\": \"node:find\"");
+    expect(response.result.content[0]?.text).toContain("Search target");
+  });
+});
+
+test("targets and search aliases work through MCP", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    const targetsMessage = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 9,
+      method: "tools/call",
+      params: {
+        name: "targets",
+        arguments: {},
+      },
+    });
+
+    const searchMessage = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 10,
+      method: "tools/call",
+      params: {
+        name: "search",
+        arguments: { query: "MCP smoke" },
+      },
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${targetsMessage}\n${searchMessage}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+
+    const responses = parseJsonLines<ToolCallResponse>(stdout);
+    expect(responses).toHaveLength(2);
+    expect(responses[0]?.result?.isError).toBe(false);
+    expect(responses[0]?.result?.content[0]?.text).toContain("\"command\": \"targets\"");
+    expect(responses[1]?.result?.isError).toBe(false);
+    expect(responses[1]?.result?.content[0]?.text).toContain("\"command\": \"search\"");
+    expect(responses[1]?.result?.content[0]?.text).toContain("Search target");
+  });
+});
+
+test("status returns diagnostic output through MCP even when unhealthy", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    saveConfig({
+      activeAccount: "default",
+      accounts: {
+        default: { name: "default", token: "" },
+      },
+    });
+
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 8,
+      method: "tools/call",
+      params: {
+        name: "status",
+        arguments: {},
+      },
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${message}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+
+    const response = parseJsonLine<{
+      result: { isError?: boolean; content: Array<{ type: string; text: string }> };
+    }>(stdout);
+
+    expect(response.result.isError).toBe(false);
+    expect(response.result.content[0]?.text).toContain("\"command\": \"doctor\"");
+    expect(response.result.content[0]?.text).toContain("\"healthy\": false");
+    expect(response.result.content[0]?.text).toContain("\"ready\": false");
+    expect(response.result.content[0]?.text).toContain("\"suggested_actions\"");
   });
 });
 

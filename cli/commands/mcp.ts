@@ -32,12 +32,13 @@ const DEFAULT_MCP_INSTRUCTIONS = `This MCP server connects to a user's WorkFlowy
 
 Before making tool calls, follow this checklist:
 
-1. Prefer \`workflowy_targets\` and/or \`list_bookmarks\` early when you need to discover saved locations, bookmarks, or user guidance.
-2. Prefer \`@targets\`, bookmarks, and cached paths before asking for or relying on raw node IDs.
-3. Use \`workflowy_read\` or \`workflowy_context\` before structural or destructive changes when surrounding context matters.
-4. Use \`workflowy_batch\` for grouped changes. A single add operation may contain a full multi-line markdown document in \`text\`.
-5. If cached paths or lookups seem stale or missing, call \`workflowy_sync\` and retry.
-6. If the user shares a WorkFlowy link, extract the hex ID after \`#/\` and use that as the node ID.
+1. Prefer \`status\` first when you need to check whether auth, API access, or cache state may block the next step.
+2. Prefer \`workflowy_targets\` and/or \`bookmarks\` early when you need to discover saved locations, bookmarks, or user guidance.
+3. Prefer \`@targets\`, bookmarks, and cached paths before asking for or relying on raw node IDs.
+4. Use \`read\` or \`workflowy_context\` before structural or destructive changes when surrounding context matters.
+5. Use \`workflowy_batch\` for grouped changes. A single add operation may contain a full multi-line markdown document in \`text\`.
+6. If cached paths or lookups seem stale or missing, call \`sync\` and retry.
+7. If the user shares a WorkFlowy link, extract the hex ID after \`#/\` and use that as the node ID.
 
 ## Key Concepts
 
@@ -49,7 +50,7 @@ Before making tool calls, follow this checklist:
 
 ## Common Workflows
 
-- To inspect a subtree: use \`workflowy_read\`.
+- To inspect a subtree: use \`read\`.
 - To understand a node in context: use \`workflowy_context\`.
 - To find something by text: use \`workflowy_search\`.
 - To add a new node: use \`workflowy_add\`.
@@ -58,7 +59,7 @@ Before making tool calls, follow this checklist:
 
 ## Common Mistakes to Avoid
 
-- Do not assume the cache is current if a path lookup fails; try \`workflowy_sync\`.
+- Do not assume the cache is current if a path lookup fails; try \`sync\`.
 - Do not guess between ambiguous matches; ask or disambiguate.
 - Do not split multi-line markdown into many add operations unless you want separate nodes.
 - Do not use raw node IDs when a stable target or cached path is available.
@@ -66,8 +67,9 @@ Before making tool calls, follow this checklist:
 
 ## Tips
 
+- \`status\` helps you detect auth, API, and cache issues before other tool calls.
 - \`workflowy_targets\` helps you learn what the account exposes.
-- \`list_bookmarks\` may include bookmark context notes that help with navigation.
+- \`bookmarks\` may include bookmark context notes that help with navigation.
 - \`workflowy_context\` is often better than a deep read when you need nearby siblings and ancestors.
 - Use smaller reads first, then expand depth only if needed.`;
 
@@ -176,6 +178,19 @@ const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: "read",
+    description: "Read a WorkFlowy node and its children (short alias of workflowy_read)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: { type: "string", description: "Node target (@inbox, @today, node ID, or path)" },
+        depth: { type: "number", description: "Max depth to read", default: 3 },
+        live: { type: "boolean", description: "Bypass cache", default: false },
+      },
+      required: ["target"],
+    },
+  },
+  {
     name: "workflowy_add",
     description: "Add a new node",
     inputSchema: {
@@ -190,8 +205,34 @@ const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: "add",
+    description: "Add a new node (short alias of workflowy_add)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "Node text" },
+        to: { type: "string", description: "Target parent", default: "@inbox" },
+        type: { type: "string", enum: ["bullet", "todo", "h1", "h2", "h3"], default: "bullet" },
+        note: { type: "string", description: "Note content" },
+      },
+      required: ["text"],
+    },
+  },
+  {
     name: "workflowy_find",
     description: "Find nodes by name or path",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Name, path, or @target" },
+        target: { type: "string", description: "Scope search to subtree" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "find",
+    description: "Find nodes by name or path (short alias of workflowy_find)",
     inputSchema: {
       type: "object",
       properties: {
@@ -234,8 +275,24 @@ const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: "targets",
+    description: "List available WorkFlowy targets (short alias of workflowy_targets)",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
     name: "list_bookmarks",
     description: "List saved local bookmarks and their target nodes",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "bookmarks",
+    description: "List saved local bookmarks and their target nodes (short alias of list_bookmarks)",
     inputSchema: {
       type: "object",
       properties: {},
@@ -269,6 +326,20 @@ const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: "search",
+    description: "Full-text search across all nodes or a subtree (short alias of workflowy_search)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query" },
+        smart: { type: "boolean", description: "Enable AI reranking", default: false },
+        live: { type: "boolean", description: "Search API directly", default: false },
+        target: { type: "string", description: "Scope search to subtree" },
+      },
+      required: ["query"],
+    },
+  },
+  {
     name: "workflowy_move",
     description: "Move a node to a different parent",
     inputSchema: {
@@ -282,8 +353,33 @@ const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: "move",
+    description: "Move a node to a different parent (short alias of workflowy_move)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        nodeId: { type: "string", description: "Node ID to move" },
+        to: { type: "string", description: "Destination parent" },
+        position: { type: "string", enum: ["top", "bottom"], default: "top" },
+      },
+      required: ["nodeId", "to"],
+    },
+  },
+  {
     name: "workflowy_complete",
     description: "Mark a todo as complete or uncomplete",
+    inputSchema: {
+      type: "object",
+      properties: {
+        nodeId: { type: "string", description: "Node ID" },
+        undo: { type: "boolean", description: "Uncheck instead", default: false },
+      },
+      required: ["nodeId"],
+    },
+  },
+  {
+    name: "complete",
+    description: "Mark a todo as complete or uncomplete (short alias of workflowy_complete)",
     inputSchema: {
       type: "object",
       properties: {
@@ -308,8 +404,77 @@ const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: "update",
+    description: "Rename a node or edit its note (short alias of workflowy_update)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        nodeId: { type: "string", description: "Node ID or cached path" },
+        text: { type: "string", description: "Replacement node text" },
+        note: { type: "string", description: "Replacement note text" },
+        clearNote: { type: "boolean", description: "Remove the note", default: false },
+      },
+      required: ["nodeId"],
+    },
+  },
+  {
     name: "workflowy_batch",
     description: "Execute multiple operations in a batch. For markdown content, one add op may contain the entire multi-line markdown document in text; do not split it into one op per line unless you want separate nodes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ops: {
+          type: "array",
+          description: "Array of operations. A single add op may include a full multi-line markdown document in text.",
+          items: {
+            type: "object",
+            properties: {
+              op: {
+                type: "string",
+                enum: ["capture", "add", "complete", "uncomplete", "move", "delete"],
+                description: "Operation type.",
+              },
+              text: {
+                type: "string",
+                description: "Text for add/capture. This may be a full multi-line markdown document; it does not need to be split line by line.",
+              },
+              to: {
+                type: "string",
+                description: "Target parent for add/capture/move. Accepts @targets, paths, or node IDs.",
+              },
+              target: {
+                type: "string",
+                description: "Alternate target parent field. Accepts @targets, paths, or node IDs.",
+              },
+              ref: {
+                type: "string",
+                description: "Node ID for complete, uncomplete, move, or delete operations.",
+              },
+              type: {
+                type: "string",
+                enum: ["bullet", "todo", "h1", "h2", "h3"],
+                description: "Optional node layout for add/capture.",
+              },
+              note: {
+                type: "string",
+                description: "Optional note content for add/capture.",
+              },
+              position: {
+                type: "string",
+                enum: ["top", "bottom"],
+                description: "Optional insert/move position.",
+              },
+            },
+            required: ["op"],
+          },
+        },
+      },
+      required: ["ops"],
+    },
+  },
+  {
+    name: "batch",
+    description: "Execute multiple operations in a batch (short alias of workflowy_batch)",
     inputSchema: {
       type: "object",
       properties: {
@@ -385,8 +550,29 @@ const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: "context",
+    description: "Show a node with ancestors, siblings, and children (short alias of workflowy_context)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        nodeId: { type: "string", description: "Node ID or target" },
+      },
+      required: ["nodeId"],
+    },
+  },
+  {
     name: "workflowy_sync",
     description: "Sync the local cache from WorkFlowy API",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "sync",
+    description: "Sync the local cache from WorkFlowy API (short alias of workflowy_sync)",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "status",
+    description: "Show authentication, API, cache, and setup status",
     inputSchema: { type: "object", properties: {} },
   },
 ];
@@ -394,21 +580,34 @@ const MCP_TOOLS: McpTool[] = [
 async function handleToolCall(name: string, args: Record<string, unknown>): Promise<ToolCallResult> {
   const cmdMap: Record<string, string[]> = {
     workflowy_read: ["node:read", String(args.target ?? "@inbox"), ...(args.depth ? ["--depth", String(args.depth)] : []), ...(args.live ? ["--live"] : [])],
+    read: ["node:read", String(args.target ?? "@inbox"), ...(args.depth ? ["--depth", String(args.depth)] : []), ...(args.live ? ["--live"] : [])],
     workflowy_add: ["node:add", String(args.to ?? "@inbox"), String(args.text ?? ""), ...(args.type ? ["--type", String(args.type)] : []), ...(args.note ? ["--note", String(args.note)] : [])],
+    add: ["node:add", String(args.to ?? "@inbox"), String(args.text ?? ""), ...(args.type ? ["--type", String(args.type)] : []), ...(args.note ? ["--note", String(args.note)] : [])],
     workflowy_find: ["node:find", String(args.query ?? "")],
+    find: ["node:find", String(args.query ?? "")],
     workflowy_todos: ["node:todos", ...(args.target ? ["--target", String(args.target)] : []), ...(args.completed ? ["--completed"] : []), ...(args.since ? ["--since", String(args.since)] : []), ...(args.limit ? ["--limit", String(args.limit)] : [])],
     workflowy_tags: ["tags", ...(args.target ? ["--target", String(args.target)] : []), ...(args.filter ? ["--filter", String(args.filter)] : [])],
     workflowy_targets: ["targets"],
+    targets: ["targets"],
     list_bookmarks: ["bookmark:list", "--format", "json"],
+    bookmarks: ["bookmark:list", "--format", "json"],
     save_bookmark: ["bookmark:save", String(args.name ?? ""), String(args.target ?? ""), ...(args.context ? ["--context", String(args.context)] : []), "--format", "json"],
     workflowy_search: ["search", String(args.query ?? ""), ...(args.smart ? ["--smart"] : []), ...(args.live ? ["--live"] : []), ...(args.target ? ["--target", String(args.target)] : [])],
+    search: ["search", String(args.query ?? ""), ...(args.smart ? ["--smart"] : []), ...(args.live ? ["--live"] : []), ...(args.target ? ["--target", String(args.target)] : [])],
     workflowy_move: ["node:move", String(args.nodeId ?? ""), String(args.to ?? ""), ...(args.position ? ["--position", String(args.position)] : [])],
+    move: ["node:move", String(args.nodeId ?? ""), String(args.to ?? ""), ...(args.position ? ["--position", String(args.position)] : [])],
     workflowy_complete: ["node:complete", String(args.nodeId ?? ""), ...(args.undo ? ["--undo"] : [])],
+    complete: ["node:complete", String(args.nodeId ?? ""), ...(args.undo ? ["--undo"] : [])],
     workflowy_update: ["node:update", String(args.nodeId ?? ""), ...(args.text !== undefined ? ["--text", String(args.text)] : []), ...(args.note !== undefined ? ["--note", String(args.note)] : []), ...(args.clearNote ? ["--clear-note"] : [])],
+    update: ["node:update", String(args.nodeId ?? ""), ...(args.text !== undefined ? ["--text", String(args.text)] : []), ...(args.note !== undefined ? ["--note", String(args.note)] : []), ...(args.clearNote ? ["--clear-note"] : [])],
     workflowy_batch: ["batch"],
+    batch: ["batch"],
     workflowy_propose: ["ai:propose", String(args.instruction ?? "")],
     workflowy_context: ["node:context", String(args.nodeId ?? "")],
+    context: ["node:context", String(args.nodeId ?? "")],
     workflowy_sync: ["cache:sync"],
+    sync: ["cache:sync"],
+    status: ["doctor"],
   };
 
   const cmdArgs = cmdMap[name];
@@ -419,13 +618,15 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
     };
   }
 
+  const usesBatchStdin = name === "workflowy_batch" || name === "batch";
+
   const proc = Bun.spawn(getMcpCliInvocation(cmdArgs), {
-    stdin: name === "workflowy_batch" ? "pipe" : "ignore",
+    stdin: usesBatchStdin ? "pipe" : "ignore",
     stdout: "pipe",
     stderr: "pipe",
   });
 
-  if (name === "workflowy_batch") {
+  if (usesBatchStdin) {
     const stdin = proc.stdin;
     if (!stdin) {
       return {
@@ -453,7 +654,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
   const trimmedStdout = stdout.trim();
   const trimmedStderr = stderr.trim();
 
-  if (exitCode !== 0) {
+  if (exitCode !== 0 && name !== "status") {
     return {
       text: trimmedStdout || JSON.stringify({
         error: {
@@ -494,7 +695,7 @@ export function registerMcp(program: Command): void {
     .action(async (opts: { port?: string; tools?: string }) => {
       const allowedTools = opts.tools ? new Set(opts.tools.split(",").map((t) => t.trim())) : null;
       const tools = allowedTools
-        ? MCP_TOOLS.filter((t) => allowedTools.has(t.name.replace("workflowy_", "")))
+        ? MCP_TOOLS.filter((t) => allowedTools.has(t.name) || allowedTools.has(t.name.replace("workflowy_", "")) || (t.name === "list_bookmarks" && allowedTools.has("bookmarks")))
         : MCP_TOOLS;
 
       if (opts.port) {

@@ -27,6 +27,7 @@ const PID_PATH = join(getConfigDir(), "sync.pid");
 export function registerCacheSync(program: Command): void {
   program
     .command("cache:sync")
+    .alias("sync")
     .description("Sync local cache from WorkFlowy API")
     .option("--watch", "Background daemon, re-syncs every 5 min")
     .option("--status", "Show last sync time and node count")

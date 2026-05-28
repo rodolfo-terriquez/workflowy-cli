@@ -10,12 +10,14 @@ const testConfigDir = join(testHome, ".workflowy");
 
 let cacheModule: typeof import("../shared/cache.ts");
 let configModule: typeof import("../shared/config.ts");
+let dbModule: typeof import("../shared/db.ts");
 
 beforeAll(async () => {
   process.env.HOME = testHome;
   process.env.WORKFLOWY_CONFIG_DIR = testConfigDir;
   configModule = await import("../shared/config.ts");
   cacheModule = await import("../shared/cache.ts");
+  dbModule = await import("../shared/db.ts");
 });
 
 afterEach(() => {
@@ -43,6 +45,110 @@ afterAll(() => {
   }
 
   rmSync(testHome, { recursive: true, force: true });
+});
+
+test("read alias resolves to node:read", async () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: {
+      default: { name: "default", token: "token-default" },
+    },
+  });
+
+  cacheModule.replaceAllNodes([
+    { id: "root-1", name: "Inbox", parent_id: null, modifiedAt: 100 },
+    { id: "child-1", name: "Alias target", parent_id: "root-1", modifiedAt: 101 },
+  ]);
+  cacheModule.setTargetUuid("inbox", "root-1");
+
+  const result = await runCli(["read", "@inbox", "--format", "json"]);
+  expect(result.exitCode).toBe(0);
+
+  const parsed = JSON.parse(result.stdout) as { meta: { command: string }; node: { id: string }; children: Array<{ id: string; name: string }> };
+  expect(parsed.meta.command).toBe("node:read");
+  expect(parsed.node.id).toBe("root-1");
+  expect(parsed.children.map((node) => node.id)).toEqual(["child-1"]);
+});
+
+test("sync alias resolves to cache:sync status mode without hitting the API", async () => {
+  const result = await runCli(["--agent", "sync", "--status"]);
+  expect(result.exitCode).toBe(0);
+
+  const parsed = JSON.parse(result.stdout) as { meta: { command: string; mode: string } };
+  expect(parsed.meta.command).toBe("cache:sync");
+  expect(parsed.meta.mode).toBe("status");
+});
+
+test("bookmarks alias resolves to bookmark:list", async () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: {
+      default: { name: "default", token: "token-default" },
+    },
+  });
+
+  cacheModule.replaceAllNodes([
+    { id: "root-1", name: "Inbox", parent_id: null, modifiedAt: 100 },
+  ]);
+  dbModule.saveBookmark("default", {
+    name: "home",
+    nodeId: "root-1",
+    context: "Primary inbox bookmark",
+  });
+
+  const result = await runCli(["bookmarks", "--format", "json"]);
+  expect(result.exitCode).toBe(0);
+
+  const parsed = JSON.parse(result.stdout) as { meta: { command: string }; bookmarks: Array<{ name: string; context: string | null }> };
+  expect(parsed.meta.command).toBe("bookmark:list");
+  expect(parsed.bookmarks[0]?.name).toBe("home");
+  expect(parsed.bookmarks[0]?.context).toBe("Primary inbox bookmark");
+});
+
+test("status and auth status both run doctor with structured readiness output", async () => {
+  const statusResult = await runCli(["--agent", "status"]);
+  expect(statusResult.exitCode).toBe(1);
+
+  const statusParsed = JSON.parse(statusResult.stdout) as {
+    meta: { command: string };
+    healthy: boolean;
+    ready: boolean;
+    account: { active: string; configured: boolean };
+    auth: { token_present: boolean; valid: boolean };
+    api: { checked: boolean; reachable: boolean; ok: boolean; status_code: number | null };
+    cache: { db_exists: boolean; present: boolean; node_count: number; cache_stale: boolean };
+    suggested_actions: string[];
+  };
+  expect(statusParsed.meta.command).toBe("doctor");
+  expect(statusParsed.healthy).toBe(false);
+  expect(typeof statusParsed.ready).toBe("boolean");
+  expect(statusParsed.account.active).toBe("default");
+  expect(statusParsed.auth.token_present).toBe(false);
+  expect(statusParsed.auth.valid).toBe(false);
+  expect(statusParsed.api.checked).toBe(false);
+  expect(statusParsed.cache.cache_stale).toBe(true);
+  expect(statusParsed.suggested_actions).toContain("wf login");
+  expect(statusParsed.suggested_actions).toContain("wf sync");
+
+  const authStatusResult = await runCli(["--agent", "auth", "status"]);
+  expect(authStatusResult.exitCode).toBe(1);
+
+  const authStatusParsed = JSON.parse(authStatusResult.stdout) as { meta: { command: string }; ready: boolean; suggested_actions: string[] };
+  expect(authStatusParsed.meta.command).toBe("doctor");
+  expect(typeof authStatusParsed.ready).toBe("boolean");
+  expect(authStatusParsed.suggested_actions).toContain("wf status");
+});
+
+test("unknown command errors include suggestions and help hints", async () => {
+  const topLevelResult = await runCli(["bookmarkss"], { CI: "", WF_AGENT: "", TERM: "xterm-256color" });
+  expect(topLevelResult.exitCode).toBe(1);
+  expect(topLevelResult.stderr).toContain("Did you mean bookmarks?");
+  expect(topLevelResult.stderr).toContain("Run `wf --help` to see available commands.");
+
+  const authResult = await runCli(["auth", "sttaus"], { CI: "", WF_AGENT: "", TERM: "xterm-256color" });
+  expect(authResult.exitCode).toBe(1);
+  expect(authResult.stderr).toContain("Did you mean status?");
+  expect(authResult.stderr).toContain("Run `wf auth --help` to see auth commands.");
 });
 
 test("node:todos only returns actual todo nodes", async () => {

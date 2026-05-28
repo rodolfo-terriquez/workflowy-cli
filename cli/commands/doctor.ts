@@ -17,6 +17,43 @@ interface CheckResult {
   warn?: boolean;
 }
 
+interface ApiStatus {
+  checked: boolean;
+  reachable: boolean;
+  ok: boolean;
+  status_code: number | null;
+  latency_ms: number | null;
+  error: string | null;
+}
+
+interface DoctorReport {
+  meta: {
+    command: "doctor";
+    timestamp: string;
+    wf_version: string;
+  };
+  checks: Array<{ label: string; ok: boolean; detail: string; warn?: boolean }>;
+  healthy: boolean;
+  ready: boolean;
+  account: {
+    active: string;
+    configured: boolean;
+  };
+  auth: {
+    token_present: boolean;
+    valid: boolean;
+  };
+  api: ApiStatus;
+  cache: {
+    db_exists: boolean;
+    present: boolean;
+    node_count: number;
+    cache_age_seconds: number | null;
+    cache_stale: boolean;
+  };
+  suggested_actions: string[];
+}
+
 function isProcessRunning(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -99,97 +136,192 @@ function getShellCompletionsStatus(): { ok: boolean; detail: string; warn?: bool
   return { ok: true, detail: "not installed — run `wf completions install --shell bash`", warn: true };
 }
 
+async function getApiStatus(token: string | undefined): Promise<ApiStatus> {
+  if (!token) {
+    return {
+      checked: false,
+      reachable: false,
+      ok: false,
+      status_code: null,
+      latency_ms: null,
+      error: null,
+    };
+  }
+
+  try {
+    const start = Date.now();
+    const res = await fetch("https://beta.workflowy.com/api/llm/doc/read/inbox/?depth=0", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    return {
+      checked: true,
+      reachable: true,
+      ok: res.ok,
+      status_code: res.status,
+      latency_ms: Date.now() - start,
+      error: null,
+    };
+  } catch (err) {
+    return {
+      checked: true,
+      reachable: false,
+      ok: false,
+      status_code: null,
+      latency_ms: null,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+function buildSuggestedActions(report: Omit<DoctorReport, "suggested_actions">): string[] {
+  const suggestions = new Set<string>();
+
+  if (!report.auth.token_present || !report.auth.valid) {
+    suggestions.add("wf login");
+  }
+
+  if (!report.cache.present || report.cache.cache_stale) {
+    suggestions.add("wf sync");
+  }
+
+  if (!report.ready) {
+    suggestions.add("wf status");
+  }
+
+  return [...suggestions];
+}
+
+async function collectDoctorReport(): Promise<DoctorReport> {
+  const checks: CheckResult[] = [];
+  checks.push({ label: "Binary version", ok: true, detail: VERSION });
+
+  const config = loadConfig();
+  const activeAccount = config.activeAccount;
+  const token = config.accounts[activeAccount]?.token;
+  const hasToken = !!token;
+  checks.push({ label: "Auth token present", ok: hasToken, detail: hasToken ? "yes" : "missing — run `wf login`" });
+
+  const apiStatus = await getApiStatus(token);
+  if (hasToken) {
+    checks.push({
+      label: "API reachable (beta.workflowy.com)",
+      ok: apiStatus.ok,
+      detail: apiStatus.reachable
+        ? apiStatus.ok
+          ? `${apiStatus.latency_ms}ms`
+          : `HTTP ${apiStatus.status_code}`
+        : apiStatus.error ?? "unreachable",
+    });
+  }
+
+  const nodeCount = getCacheNodeCount();
+  const cacheAge = getCacheAgeSeconds();
+  const dbPath = getDbPath();
+  const dbExists = existsSync(dbPath);
+  const cachePresent = dbExists && nodeCount > 0;
+  const cacheStale = cacheAge === null || cacheAge > 300;
+  const ageStr = cacheAge ? `${Math.floor(cacheAge / 60)}m old` : "never synced";
+  checks.push({
+    label: "SQLite DB",
+    ok: cachePresent,
+    detail: dbExists ? `${nodeCount.toLocaleString()} nodes, ${ageStr}` : "missing — run `wf cache:sync`",
+  });
+
+  checks.push({ label: "FTS index present", ok: dbExists, detail: dbExists ? "yes" : "no" });
+
+  const llmModel = config.llm?.model ?? "google/gemini-flash-2.5";
+  const llmKey = config.llm?.apiKey;
+  checks.push({
+    label: "LLM config",
+    ok: true,
+    detail: config.llm ? `configured (model: ${llmModel})` : `not configured (default model: ${llmModel})`,
+  });
+  checks.push({
+    label: "LLM API key",
+    ok: !!llmKey,
+    detail: llmKey ? "present" : "missing — set with `wf config:set llm.apiKey <key>`",
+  });
+
+  const os = platform();
+  const clipTool = os === "darwin" ? "pbcopy" : os === "win32" ? "clip" : "xclip";
+  let clipOk = false;
+  try {
+    const proc = Bun.spawn(["which", clipTool], { stdout: "pipe" });
+    await proc.exited;
+    clipOk = proc.exitCode === 0;
+  } catch {
+    clipOk = false;
+  }
+  checks.push({ label: `Clipboard tool: ${clipTool}`, ok: clipOk, detail: clipOk ? "found" : "not found", warn: !clipOk });
+
+  const watchStatus = getWatchDaemonStatus();
+  checks.push({ label: "Watch daemon", ok: watchStatus.ok, detail: watchStatus.detail, warn: !watchStatus.ok });
+
+  const completionsStatus = getShellCompletionsStatus();
+  checks.push({ label: "Shell completions", ok: completionsStatus.ok, detail: completionsStatus.detail, warn: completionsStatus.warn });
+
+  const hasErrors = checks.some((c) => !c.ok);
+  const reportBase = {
+    meta: {
+      command: "doctor" as const,
+      timestamp: new Date().toISOString(),
+      wf_version: VERSION,
+    },
+    checks: checks.map((c) => ({ label: c.label, ok: c.ok, detail: c.detail, warn: c.warn })),
+    healthy: !hasErrors,
+    ready: hasToken && apiStatus.ok,
+    account: {
+      active: activeAccount,
+      configured: !!config.accounts[activeAccount],
+    },
+    auth: {
+      token_present: hasToken,
+      valid: hasToken && apiStatus.ok,
+    },
+    api: apiStatus,
+    cache: {
+      db_exists: dbExists,
+      present: cachePresent,
+      node_count: nodeCount,
+      cache_age_seconds: cacheAge,
+      cache_stale: cacheStale,
+    },
+  };
+
+  return {
+    ...reportBase,
+    suggested_actions: buildSuggestedActions(reportBase),
+  };
+}
+
+export async function runDoctor(): Promise<void> {
+  const report = await collectDoctorReport();
+
+  if (isAgentMode()) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(`\n  ${chalk.bold("wf doctor")} — checking your setup\n`);
+    for (const c of report.checks) {
+      const icon = !c.ok ? chalk.red("✗") : c.warn ? chalk.yellow("⚠") : chalk.green("✓");
+      console.log(`  ${icon} ${c.label}: ${c.detail}`);
+    }
+
+    const summary = report.ready ? chalk.green("ready") : chalk.yellow("not ready");
+    console.log(`  ${chalk.bold("Ready:")} ${summary}`);
+    if (report.suggested_actions.length > 0) {
+      console.log(`  ${chalk.bold("Next:")}  ${report.suggested_actions.join("  ·  ")}`);
+    }
+    console.log("");
+  }
+
+  process.exit(report.healthy ? 0 : 1);
+}
+
 export function registerDoctor(program: Command): void {
   program
     .command("doctor")
+    .alias("status")
     .description("Diagnose common setup issues")
-    .action(async () => {
-      const checks: CheckResult[] = [];
-
-      checks.push({ label: "Binary version", ok: true, detail: VERSION });
-
-      const config = loadConfig();
-      const hasToken = !!config.accounts[config.activeAccount]?.token;
-      checks.push({ label: "Auth token present", ok: hasToken, detail: hasToken ? "yes" : "missing — run `wf login`" });
-
-      if (hasToken) {
-        try {
-          const start = Date.now();
-          const res = await fetch("https://beta.workflowy.com/api/llm/doc/read/inbox/?depth=0", {
-            headers: { Authorization: `Bearer ${config.accounts[config.activeAccount]!.token}` },
-          });
-          const elapsed = Date.now() - start;
-          checks.push({
-            label: "API reachable (beta.workflowy.com)",
-            ok: res.ok,
-            detail: res.ok ? `${elapsed}ms` : `HTTP ${res.status}`,
-          });
-        } catch (err) {
-          checks.push({ label: "API reachable", ok: false, detail: String(err) });
-        }
-      }
-
-      const nodeCount = getCacheNodeCount();
-      const cacheAge = getCacheAgeSeconds();
-      const dbPath = getDbPath();
-      const dbExists = existsSync(dbPath);
-      const ageStr = cacheAge ? `${Math.floor(cacheAge / 60)}m old` : "never synced";
-      checks.push({
-        label: "SQLite DB",
-        ok: dbExists && nodeCount > 0,
-        detail: dbExists ? `${nodeCount.toLocaleString()} nodes, ${ageStr}` : "missing — run `wf cache:sync`",
-      });
-
-      checks.push({ label: "FTS index present", ok: dbExists, detail: dbExists ? "yes" : "no" });
-
-      const llmModel = config.llm?.model ?? "google/gemini-flash-2.5";
-      const llmKey = config.llm?.apiKey;
-      checks.push({
-        label: "LLM config",
-        ok: true,
-        detail: config.llm ? `configured (model: ${llmModel})` : `not configured (default model: ${llmModel})`,
-      });
-      checks.push({
-        label: "LLM API key",
-        ok: !!llmKey,
-        detail: llmKey ? "present" : "missing — set with `wf config:set llm.apiKey <key>`",
-      });
-
-      const os = platform();
-      const clipTool = os === "darwin" ? "pbcopy" : os === "win32" ? "clip" : "xclip";
-      let clipOk = false;
-      try {
-        const proc = Bun.spawn(["which", clipTool], { stdout: "pipe" });
-        await proc.exited;
-        clipOk = proc.exitCode === 0;
-      } catch {
-        clipOk = false;
-      }
-      checks.push({ label: `Clipboard tool: ${clipTool}`, ok: clipOk, detail: clipOk ? "found" : "not found", warn: !clipOk });
-
-      const watchStatus = getWatchDaemonStatus();
-      checks.push({ label: "Watch daemon", ok: watchStatus.ok, detail: watchStatus.detail, warn: !watchStatus.ok });
-
-      const completionsStatus = getShellCompletionsStatus();
-      checks.push({ label: "Shell completions", ok: completionsStatus.ok, detail: completionsStatus.detail, warn: completionsStatus.warn });
-
-      const hasErrors = checks.some((c) => !c.ok);
-
-      if (isAgentMode()) {
-        console.log(JSON.stringify({
-          meta: { command: "doctor", timestamp: new Date().toISOString(), wf_version: VERSION },
-          checks: checks.map((c) => ({ label: c.label, ok: c.ok, detail: c.detail, warn: c.warn })),
-          healthy: !hasErrors,
-        }, null, 2));
-      } else {
-        console.log(`\n  ${chalk.bold("wf doctor")} — checking your setup\n`);
-        for (const c of checks) {
-          const icon = !c.ok ? chalk.red("✗") : c.warn ? chalk.yellow("⚠") : chalk.green("✓");
-          console.log(`  ${icon} ${c.label}: ${c.detail}`);
-        }
-        console.log("");
-      }
-
-      process.exit(hasErrors ? 1 : 0);
-    });
+    .action(runDoctor);
 }
