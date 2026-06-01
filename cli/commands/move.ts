@@ -1,11 +1,12 @@
 import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
-import { requireToken, loadConfig } from "../shared/config.ts";
+import { requireToken } from "../shared/config.ts";
 import { parseLlmDocResponse } from "../shared/nodes.ts";
-import { getNodeById, getCacheNodeCount, getCacheAgeSeconds, isCacheStale, markTargetDirty } from "../shared/cache.ts";
+import { getNodeById, getCacheNodeCount, markTargetDirty } from "../shared/cache.ts";
 import { isDirectId, findByNameOrPath, resolveTargetReference } from "../shared/path.ts";
 import { formatJson } from "../output/json.ts";
+import { buildWriteSuccessOutput } from "../shared/write-response.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 
@@ -35,9 +36,12 @@ export function registerNodeMove(program: Command): void {
         }
         const hasCache = getCacheNodeCount() > 0;
 
+        let sourceParentId: string | null;
+
         if (hasCache) {
           const cached = getNodeById(resolvedNodeId);
           if (cached?.parent_id) {
+            sourceParentId = cached.parent_id;
             await api.readDoc(cached.parent_id, 1);
             await api.editDoc(cached.parent_id, [{
               op: "move",
@@ -46,36 +50,33 @@ export function registerNodeMove(program: Command): void {
               position: opts.position as "top" | "bottom",
             }]);
           } else {
-            await moveLive(api, resolvedNodeId, resolved.id, opts.position);
+            sourceParentId = await moveLive(api, resolvedNodeId, resolved.id, opts.position);
           }
         } else {
-          await moveLive(api, resolvedNodeId, resolved.id, opts.position);
+          sourceParentId = await moveLive(api, resolvedNodeId, resolved.id, opts.position);
         }
 
-        if (hasCache) {
-          const cached = getNodeById(resolvedNodeId);
-          if (cached?.parent_id) markTargetDirty(cached.parent_id);
-        }
+        markTargetDirty(resolvedNodeId);
+        if (sourceParentId) markTargetDirty(sourceParentId);
         markTargetDirty(resolved.id);
 
         const useJson = opts.format === "json" || isAgentMode();
-        const cacheAge = getCacheAgeSeconds();
 
         if (useJson) {
-          const config = loadConfig();
-          const meta: Record<string, unknown> = {
+          console.log(formatJson(buildWriteSuccessOutput({
             command: "node:move",
             target,
-            resolved_id: resolved.id,
-            timestamp: new Date().toISOString(),
-            account: config.activeAccount,
-            wf_version: "3.0.6",
-          };
-          if (cacheAge !== null) {
-            meta.cache_age_seconds = cacheAge;
-            meta.cache_stale = isCacheStale();
-          }
-          console.log(formatJson({ meta, message: `Moved ${resolvedNodeId} to ${resolved.label}` }));
+            resolvedId: resolved.id,
+            message: `Moved ${resolvedNodeId} to ${resolved.label}`,
+            affectedNodeIds: [resolvedNodeId, sourceParentId, resolved.id],
+            dirtyNodeIds: [resolvedNodeId, sourceParentId, resolved.id],
+            details: {
+              moved_node_id: resolvedNodeId,
+              source_parent_id: sourceParentId,
+              destination_parent_id: resolved.id,
+              position: opts.position,
+            },
+          })));
         } else {
           console.log(`\n  ${chalk.green("✓")} Moved ${chalk.dim(resolvedNodeId)} → ${chalk.cyan(resolved.label)}\n`);
         }
@@ -88,7 +89,7 @@ async function moveLive(
   nodeId: string,
   destId: string,
   position: string
-): Promise<void> {
+): Promise<string | null> {
   const nodeRaw = await api.readDoc(nodeId, 0);
   const { node: srcNode, ancestors } = parseLlmDocResponse(nodeRaw as Record<string, unknown>);
   const parentId = ancestors.length > 0 ? ancestors[ancestors.length - 1]!.id : "None";
@@ -100,6 +101,8 @@ async function moveLive(
     under: destId,
     position: position as "top" | "bottom",
   }]);
+
+  return parentId === "None" ? null : parentId;
 }
 
 async function resolveNodeArg(input: string, api: WorkflowyAPI): Promise<string> {

@@ -1,10 +1,11 @@
 import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
-import { requireToken, loadConfig } from "../shared/config.ts";
-import { getCacheNodeCount, getCacheAgeSeconds, getNodeById, isCacheStale, markTargetDirty } from "../shared/cache.ts";
+import { requireToken } from "../shared/config.ts";
+import { getCacheNodeCount, getNodeById, markTargetDirty } from "../shared/cache.ts";
 import { findByNameOrPath, isDirectId } from "../shared/path.ts";
 import { formatJson } from "../output/json.ts";
+import { buildWriteSuccessOutput } from "../shared/write-response.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 
@@ -57,21 +58,19 @@ export function registerNodeUpdate(program: Command): void {
         ].filter(Boolean) as string[];
 
         if (useJson) {
-          const config = loadConfig();
-          const meta: Record<string, unknown> = {
+          console.log(formatJson(buildWriteSuccessOutput({
             command: "node:update",
             target: nodeIdOrPath,
-            resolved_id: nodeId,
-            timestamp: new Date().toISOString(),
-            account: config.activeAccount,
-            wf_version: "3.0.6",
-          };
-          const cacheAge = getCacheAgeSeconds();
-          if (cacheAge !== null) {
-            meta.cache_age_seconds = cacheAge;
-            meta.cache_stale = isCacheStale();
-          }
-          console.log(formatJson({ meta, message: `Updated ${changedFields.join(" and ")} on ${nodeId}` }));
+            resolvedId: nodeId,
+            message: `Updated ${changedFields.join(" and ")} on ${nodeId}`,
+            affectedNodeIds: [nodeId, cached?.parent_id],
+            dirtyNodeIds: [nodeId, cached?.parent_id],
+            details: {
+              updated_node_id: nodeId,
+              parent_id: cached?.parent_id,
+              changed_fields: changedFields,
+            },
+          })));
         } else {
           console.log(`\n  ${chalk.green("✓")} Updated ${changedFields.join(" and ")} on ${chalk.dim(nodeId)}\n`);
         }

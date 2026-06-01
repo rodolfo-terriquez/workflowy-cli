@@ -1,11 +1,12 @@
 import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
-import { requireToken, loadConfig } from "../shared/config.ts";
-import { getCacheNodeCount, getCacheAgeSeconds, isCacheStale, markTargetDirty, getNodeById } from "../shared/cache.ts";
+import { requireToken } from "../shared/config.ts";
+import { getCacheNodeCount, markTargetDirty, getNodeById } from "../shared/cache.ts";
 import { parseLlmDocResponse } from "../shared/nodes.ts";
 import { isDirectId, findByNameOrPath } from "../shared/path.ts";
 import { formatJson } from "../output/json.ts";
+import { buildWriteSuccessOutput } from "../shared/write-response.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 
@@ -30,25 +31,23 @@ export function registerNodeDelete(program: Command): void {
         await api.readDoc(parentId, 1);
         await api.editDoc(parentId, [{ op: "delete", ref: nodeId }]);
 
+        markTargetDirty(nodeId);
         markTargetDirty(parentId);
         const useJson = opts.format === "json" || isAgentMode();
 
         if (useJson) {
-          const config = loadConfig();
-          const meta: Record<string, unknown> = {
+          console.log(formatJson(buildWriteSuccessOutput({
             command: "node:delete",
             target: nodeIdOrPath,
-            resolved_id: nodeId,
-            timestamp: new Date().toISOString(),
-            account: config.activeAccount,
-            wf_version: "3.0.6",
-          };
-          const cacheAge = getCacheAgeSeconds();
-          if (cacheAge !== null) {
-            meta.cache_age_seconds = cacheAge;
-            meta.cache_stale = isCacheStale();
-          }
-          console.log(formatJson({ meta, message: `Deleted ${nodeId}` }));
+            resolvedId: nodeId,
+            message: `Deleted ${nodeId}`,
+            affectedNodeIds: [nodeId, parentId],
+            dirtyNodeIds: [nodeId, parentId],
+            details: {
+              deleted_node_id: nodeId,
+              parent_id: parentId,
+            },
+          })));
         } else {
           console.log(`\n  ${chalk.red("✗")} Deleted ${chalk.dim(nodeId)}\n`);
         }

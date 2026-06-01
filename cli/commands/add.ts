@@ -1,10 +1,11 @@
 import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
-import { requireToken, loadConfig } from "../shared/config.ts";
-import { getCacheNodeCount, getCacheAgeSeconds, isCacheStale, markTargetDirty } from "../shared/cache.ts";
+import { requireToken } from "../shared/config.ts";
+import { getCacheNodeCount, markTargetDirty } from "../shared/cache.ts";
 import { resolveTargetReference } from "../shared/path.ts";
 import { formatJson } from "../output/json.ts";
+import { buildWriteSuccessOutput } from "../shared/write-response.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 
@@ -65,21 +66,24 @@ export function registerNodeAdd(program: Command): void {
         const useJson = opts.format === "json" || isAgentMode();
 
         if (useJson) {
-          const config = loadConfig();
-          const meta: Record<string, unknown> = {
+          console.log(formatJson(buildWriteSuccessOutput({
             command: "node:add",
             target,
-            resolved_id: resolvedId,
-            timestamp: new Date().toISOString(),
-            account: config.activeAccount,
-            wf_version: "3.0.6",
-          };
-          const cacheAge = getCacheAgeSeconds();
-          if (cacheAge !== null) {
-            meta.cache_age_seconds = cacheAge;
-            meta.cache_stale = isCacheStale();
-          }
-          console.log(formatJson({ meta, message: `Added to ${resolvedLabel}` }));
+            resolvedId,
+            message: `Added to ${resolvedLabel}`,
+            affectedNodeIds: [resolvedId],
+            dirtyNodeIds: [resolvedId],
+            details: {
+              parent_id: resolvedId,
+              insert_after_id: opts.after,
+              requested_node: {
+                text,
+                note: opts.note,
+                type: opts.type,
+                position: opts.after ? undefined : opts.position,
+              },
+            },
+          })));
         } else {
           console.log(
             `\n  ${chalk.green("✓")} Added to ${chalk.cyan(resolvedLabel)}: ${text}\n`

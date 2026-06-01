@@ -1,10 +1,11 @@
 import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
-import { requireToken, loadConfig } from "../shared/config.ts";
-import { getCacheNodeCount, getCacheAgeSeconds, isCacheStale, markTargetDirty } from "../shared/cache.ts";
+import { requireToken } from "../shared/config.ts";
+import { getCacheNodeCount, getNodeById, markTargetDirty } from "../shared/cache.ts";
 import { isDirectId, findByNameOrPath } from "../shared/path.ts";
 import { formatJson } from "../output/json.ts";
+import { buildWriteSuccessOutput } from "../shared/write-response.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 
@@ -33,26 +34,28 @@ export function registerNodeComplete(program: Command): void {
           },
         ]);
 
+        const cached = getCacheNodeCount() > 0 ? getNodeById(nodeId) : null;
         markTargetDirty(nodeId);
+        if (cached?.parent_id) {
+          markTargetDirty(cached.parent_id);
+        }
         const action = opts.undo ? "Uncompleted" : "Completed";
         const useJson = opts.format === "json" || isAgentMode();
 
         if (useJson) {
-          const config = loadConfig();
-          const meta: Record<string, unknown> = {
+          console.log(formatJson(buildWriteSuccessOutput({
             command: "node:complete",
             target: nodeIdOrPath,
-            resolved_id: nodeId,
-            timestamp: new Date().toISOString(),
-            account: config.activeAccount,
-            wf_version: "3.0.6",
-          };
-          const cacheAge = getCacheAgeSeconds();
-          if (cacheAge !== null) {
-            meta.cache_age_seconds = cacheAge;
-            meta.cache_stale = isCacheStale();
-          }
-          console.log(formatJson({ meta, message: `${action} ${nodeId}` }));
+            resolvedId: nodeId,
+            message: `${action} ${nodeId}`,
+            affectedNodeIds: [nodeId],
+            dirtyNodeIds: [nodeId, cached?.parent_id],
+            details: {
+              node_id: nodeId,
+              parent_id: cached?.parent_id,
+              completed: !opts.undo,
+            },
+          })));
         } else {
           const icon = opts.undo ? chalk.yellow("☐") : chalk.green("✓");
           console.log(`\n  ${icon} ${action} ${chalk.dim(nodeId)}\n`);

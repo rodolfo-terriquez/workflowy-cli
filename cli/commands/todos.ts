@@ -107,7 +107,7 @@ export function registerNodeTodos(program: Command): void {
             account: config.activeAccount,
             cache_age_seconds: cacheAge,
             cache_stale: isCacheStale(),
-            wf_version: "3.0.6",
+            wf_version: "3.0.7",
           },
           nodes: rows.map((r) => ({
             id: r.id,
