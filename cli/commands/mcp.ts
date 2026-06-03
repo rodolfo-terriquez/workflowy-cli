@@ -2,9 +2,8 @@ import type { Command } from "commander";
 import chalk from "chalk";
 import { isAgentMode } from "../agent.ts";
 import { loadConfig } from "../shared/config.ts";
-import { getCacheNodeCount, getChildren, getNodeById, type CachedNode } from "../shared/cache.ts";
-import { cleanHtml } from "../shared/nodes.ts";
-import { resolveCacheTargetReference } from "../shared/path.ts";
+import { getCacheNodeCount } from "../shared/cache.ts";
+import { getConfiguredMcpInstructions, getConfiguredMcpInstructionsTarget, resolveConfiguredMcpInstructionsNode } from "../shared/mcp-instructions.ts";
 import { doSync } from "./sync.ts";
 
 interface McpTool {
@@ -60,6 +59,7 @@ Before making tool calls, follow this checklist:
 ## Common Mistakes to Avoid
 
 - Do not assume the cache is current if a path lookup fails; try \`sync\`.
+- Do not search for or create date nodes by plain text when a built-in calendar target such as \`@today\`, \`@tomorrow\`, \`@calendar\`, or \`@next-week\` will do.
 - Do not guess between ambiguous matches; ask or disambiguate.
 - Do not split multi-line markdown into many add operations unless you want separate nodes.
 - Do not use raw node IDs when a stable target or cached path is available.
@@ -70,6 +70,7 @@ Before making tool calls, follow this checklist:
 - \`status\` helps you detect auth, API, and cache issues before other tool calls.
 - \`workflowy_targets\` helps you learn what the account exposes.
 - \`bookmarks\` may include bookmark context notes that help with navigation.
+- For date-related work, prefer built-in calendar targets such as \`@today\`, \`@tomorrow\`, \`@calendar\`, and \`@next-week\` instead of searching for date nodes by text.
 - To create a clickable date chip in node text or notes, use a literal time tag such as \`<time startYear="2026" startMonth="6" startDay="3">Jun 3, 2026</time>\`. \`startYear\` must be 4 digits; \`startMonth\` and \`startDay\` must not use leading zeroes. Plain-text dates will not render as chips.
 - \`workflowy_context\` is often better than a deep read when you need nearby siblings and ancestors.
 - Use smaller reads first, then expand depth only if needed.`;
@@ -88,22 +89,7 @@ function getInitializeInstructions(maxDepth = 4): string {
 }
 
 function getUserInitializeInstructions(maxDepth = 4): string | null {
-  const configured = loadConfig().mcp?.instructionsNode?.trim();
-  if (!configured) return null;
-
-  const node = resolveInstructionsNode(configured);
-  if (!node) return null;
-
-  const lines = flattenInstructionsNode(node, 0, maxDepth);
-  const instructions = lines.join("\n").trim();
-  return instructions.length > 0 ? instructions : null;
-}
-
-function resolveInstructionsNode(configured: string): CachedNode | null {
-  const resolved = resolveCacheTargetReference(configured);
-  if (!resolved) return null;
-
-  return getNodeById(resolved.id);
+  return getConfiguredMcpInstructions(maxDepth);
 }
 
 export function getMcpInitializeSyncReason(): "cache_empty" | "instructions_unresolved" | null {
@@ -111,10 +97,10 @@ export function getMcpInitializeSyncReason(): "cache_empty" | "instructions_unre
     return "cache_empty";
   }
 
-  const configured = loadConfig().mcp?.instructionsNode?.trim();
+  const configured = getConfiguredMcpInstructionsTarget();
   if (!configured) return null;
 
-  return resolveInstructionsNode(configured) ? null : "instructions_unresolved";
+  return resolveConfiguredMcpInstructionsNode() ? null : "instructions_unresolved";
 }
 
 export async function ensureMcpCacheReadyForInitialize(
@@ -137,31 +123,6 @@ export async function ensureMcpCacheReadyForInitialize(
 
   await mcpInitializeSyncPromise;
   return true;
-}
-
-function flattenInstructionsNode(node: CachedNode, depth: number, maxDepth: number): string[] {
-  const indent = "  ".repeat(depth);
-  const lines: string[] = [];
-  const name = cleanHtml(node.name);
-  const note = node.note ? cleanHtml(node.note) : null;
-
-  if (name) {
-    lines.push(depth === 0 ? name : `${indent}- ${name}`);
-  }
-
-  if (note) {
-    lines.push(`${indent}${depth === 0 ? "" : "  "}${note}`);
-  }
-
-  if (depth >= maxDepth) {
-    return lines;
-  }
-
-  for (const child of getChildren(node.id)) {
-    lines.push(...flattenInstructionsNode(child, depth + 1, maxDepth));
-  }
-
-  return lines;
 }
 
 const MCP_TOOLS: McpTool[] = [
@@ -285,7 +246,7 @@ const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "list_bookmarks",
-    description: "List saved local bookmarks and their target nodes",
+    description: "START EVERY CONVERSATION HERE when you need saved Workflowy locations or user guidance. Returns saved local bookmarks, their target nodes, and any configured custom MCP instructions. Use bookmark node IDs or @bookmark targets directly before searching.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -293,7 +254,7 @@ const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "bookmarks",
-    description: "List saved local bookmarks and their target nodes (short alias of list_bookmarks)",
+    description: "Short alias of list_bookmarks. START EVERY CONVERSATION HERE when you need saved Workflowy locations or user guidance. Returns saved local bookmarks, their target nodes, and any configured custom MCP instructions.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -301,7 +262,7 @@ const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "save_bookmark",
-    description: "Save or update a local bookmark for a WorkFlowy node",
+    description: "Save or update a local bookmark for a WorkFlowy node. Use the context field to leave future agents a concise note about what this location contains and how it should be used.",
     inputSchema: {
       type: "object",
       properties: {
@@ -928,7 +889,7 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
       result: {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "workflowy", version: "3.0.7" },
+        serverInfo: { name: "workflowy", version: "3.0.8" },
         instructions,
       },
     };

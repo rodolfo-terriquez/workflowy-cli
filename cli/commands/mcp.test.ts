@@ -265,11 +265,12 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
     expect(response.jsonrpc).toBe("2.0");
     expect(response.id).toBe(1);
     expect(response.result.protocolVersion).toBe("2024-11-05");
-    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.0.7" });
+    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.0.8" });
     expect(response.result.capabilities).toEqual({ tools: {} });
     expect(response.result.instructions).toContain("## STOP — Read This First");
     expect(response.result.instructions).toContain("workflowy_targets");
     expect(response.result.instructions).toContain("workflowy_batch");
+    expect(response.result.instructions).toContain("@today");
     expect(response.result.instructions).toContain("<time startYear=\"2026\" startMonth=\"6\" startDay=\"3\">Jun 3, 2026</time>");
   });
 });
@@ -496,7 +497,7 @@ test("tools/list includes short alias tools and status", async () => {
     expect(stderr).toBe("");
 
     const response = parseJsonLine<{
-      result: { tools: Array<{ name: string }> };
+      result: { tools: Array<{ name: string; description: string }> };
     }>(stdout);
 
     const toolNames = response.result.tools.map((tool) => tool.name);
@@ -513,6 +514,14 @@ test("tools/list includes short alias tools and status", async () => {
     expect(toolNames).toContain("bookmarks");
     expect(toolNames).toContain("sync");
     expect(toolNames).toContain("status");
+
+    const listBookmarksTool = response.result.tools.find((tool) => tool.name === "list_bookmarks");
+    const bookmarksTool = response.result.tools.find((tool) => tool.name === "bookmarks");
+    const saveBookmarkTool = response.result.tools.find((tool) => tool.name === "save_bookmark");
+    expect(listBookmarksTool?.description).toContain("START EVERY CONVERSATION HERE");
+    expect(listBookmarksTool?.description).toContain("configured custom MCP instructions");
+    expect(bookmarksTool?.description).toContain("START EVERY CONVERSATION HERE");
+    expect(saveBookmarkTool?.description).toContain("future agents");
   });
 });
 
@@ -567,11 +576,19 @@ test("returns saved bookmarks through MCP", async () => {
     const response = parseJsonLine<{
       result: { isError?: boolean; content: Array<{ type: string; text: string }> };
     }>(stdout);
+    const payload = JSON.parse(response.result.content[0]?.text ?? "{}") as {
+      meta?: { command?: string };
+      _instructions?: string;
+      action_required?: string;
+      bookmarks?: Array<{ name?: string; context?: string | null }>;
+    };
 
     expect(response.result.isError).toBe(false);
-    expect(response.result.content[0]?.text).toContain("\"command\": \"bookmark:list\"");
-    expect(response.result.content[0]?.text).toContain("\"name\": \"home\"");
-    expect(response.result.content[0]?.text).toContain("Primary inbox bookmark");
+    expect(payload.meta?.command).toBe("bookmark:list");
+    expect(payload._instructions).toContain("READ THIS FIRST");
+    expect(payload.action_required).toContain("No custom MCP instructions node is configured");
+    expect(payload.bookmarks?.[0]?.name).toBe("home");
+    expect(payload.bookmarks?.[0]?.context).toBe("Primary inbox bookmark");
   });
 });
 
@@ -597,10 +614,60 @@ test("returns saved bookmarks through the short MCP alias", async () => {
     const response = parseJsonLine<{
       result: { isError?: boolean; content: Array<{ type: string; text: string }> };
     }>(stdout);
+    const payload = JSON.parse(response.result.content[0]?.text ?? "{}") as {
+      meta?: { command?: string };
+      _instructions?: string;
+      bookmarks?: Array<{ name?: string }>;
+    };
 
     expect(response.result.isError).toBe(false);
-    expect(response.result.content[0]?.text).toContain("\"command\": \"bookmark:list\"");
-    expect(response.result.content[0]?.text).toContain("\"name\": \"home\"");
+    expect(payload.meta?.command).toBe("bookmark:list");
+    expect(payload._instructions).toContain("Prefer bookmark node_ids or @bookmark targets");
+    expect(payload.bookmarks?.[0]?.name).toBe("home");
+  });
+});
+
+test("returns configured custom instructions through bookmarks MCP response", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    saveConfig({
+      activeAccount: "default",
+      accounts: {
+        default: { name: "default", token: "test-token" },
+      },
+      mcp: {
+        instructionsNode: "instructions-1",
+      },
+    });
+
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 6,
+      method: "tools/call",
+      params: {
+        name: "bookmarks",
+        arguments: {},
+      },
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${message}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+
+    const response = parseJsonLine<{
+      result: { isError?: boolean; content: Array<{ type: string; text: string }> };
+    }>(stdout);
+    const payload = JSON.parse(response.result.content[0]?.text ?? "{}") as {
+      user_instructions?: string;
+      action_required?: string;
+    };
+
+    expect(response.result.isError).toBe(false);
+    expect(payload.user_instructions).toContain("Agent instructions");
+    expect(payload.user_instructions).toContain("Follow the user instructions exactly.");
+    expect(payload.action_required).toBeUndefined();
   });
 });
 

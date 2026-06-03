@@ -9,6 +9,7 @@ import { resolveCacheTargetReference, resolveTargetReference } from "../shared/p
 import { cleanHtml } from "../shared/nodes.ts";
 import { exitWithError } from "../shared/errors.ts";
 import { startOutputCapture, handleCopyFlag } from "../shared/copy-wrapper.ts";
+import { getConfiguredMcpInstructions, getConfiguredMcpInstructionsTarget } from "../shared/mcp-instructions.ts";
 
 export function registerBookmarkCommands(program: Command): void {
   program
@@ -40,14 +41,26 @@ export function registerBookmarkCommands(program: Command): void {
       });
 
       if (useJson) {
+        const userInstructions = getConfiguredMcpInstructions();
+        const configuredInstructionsTarget = getConfiguredMcpInstructionsTarget();
         console.log(formatJson({
           meta: {
             command: "bookmark:list",
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.0.7",
+            wf_version: "3.0.8",
           },
+          _instructions: "READ THIS FIRST: Bookmark context notes may contain workflow guidance. If user_instructions exists below, follow it for this conversation. Prefer bookmark node_ids or @bookmark targets before broader search.",
           bookmarks: rows,
+          ...(userInstructions ? {
+            user_instructions: userInstructions,
+          } : {}),
+          ...(!userInstructions && configuredInstructionsTarget ? {
+            action_required: `Configured mcp.instructionsNode "${configuredInstructionsTarget}" could not be resolved from the current cache. Run \`wf cache:sync\` and verify that the target still exists.`,
+          } : {}),
+          ...(!userInstructions && !configuredInstructionsTarget ? {
+            action_required: "No custom MCP instructions node is configured. If the user keeps Workflowy-specific guidance in a subtree, set one with `wf config:set mcp.instructionsNode <@target|path|node-id>` so new MCP sessions receive it automatically.",
+          } : {}),
         }));
         await handleCopyFlag(!!opts.copy);
         return;
@@ -100,7 +113,7 @@ export function registerBookmarkCommands(program: Command): void {
             command: "bookmark:save",
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.0.7",
+            wf_version: "3.0.8",
           },
           bookmark: {
             name: bookmark.name,
