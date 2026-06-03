@@ -355,6 +355,8 @@ wf mcp --port 3399
 
 `wf mcp` always sends built-in bootstrap instructions during MCP `initialize` so agents know how to use the server well. On first MCP use for an account, it will also try a best-effort cache warmup when the active account has no usable cache yet, or when a configured instructions node cannot be resolved from cache.
 
+For clickable WorkFlowy date chips, agents must use literal time tags in node text or notes, for example `<time startYear="2026" startMonth="6" startDay="3">Jun 3, 2026</time>`. `startYear` must be 4 digits; `startMonth` and `startDay` must be numeric without leading zeroes. Plain-text dates will not render as chips.
+
 You can also append your own custom instructions from a WorkFlowy node or subtree:
 
 ```bash

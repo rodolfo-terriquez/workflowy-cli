@@ -70,6 +70,7 @@ Before making tool calls, follow this checklist:
 - \`status\` helps you detect auth, API, and cache issues before other tool calls.
 - \`workflowy_targets\` helps you learn what the account exposes.
 - \`bookmarks\` may include bookmark context notes that help with navigation.
+- To create a clickable date chip in node text or notes, use a literal time tag such as \`<time startYear="2026" startMonth="6" startDay="3">Jun 3, 2026</time>\`. \`startYear\` must be 4 digits; \`startMonth\` and \`startDay\` must not use leading zeroes. Plain-text dates will not render as chips.
 - \`workflowy_context\` is often better than a deep read when you need nearby siblings and ancestors.
 - Use smaller reads first, then expand depth only if needed.`;
 

@@ -270,6 +270,7 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
     expect(response.result.instructions).toContain("## STOP — Read This First");
     expect(response.result.instructions).toContain("workflowy_targets");
     expect(response.result.instructions).toContain("workflowy_batch");
+    expect(response.result.instructions).toContain("<time startYear=\"2026\" startMonth=\"6\" startDay=\"3\">Jun 3, 2026</time>");
   });
 });
 
