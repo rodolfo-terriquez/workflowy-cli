@@ -2,7 +2,7 @@ import type { Command } from "commander";
 import chalk from "chalk";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync } from "fs";
 import { join } from "path";
-import { WorkflowyAPI } from "../shared/api.ts";
+import { WorkflowyAPI, type LlmDocItem } from "../shared/api.ts";
 import { requireToken, getConfigDir, loadConfig } from "../shared/config.ts";
 import { resolveSavedTargetNodeId } from "../targets.ts";
 import { getNodeById, getChildren, getCacheNodeCount, markTargetDirty } from "../shared/cache.ts";
@@ -88,7 +88,7 @@ export function registerNodeTemplate(program: Command): void {
 
           if (useJson) {
             console.log(JSON.stringify({
-              meta: { command: "node:template", action: "list", wf_version: "3.0.8" },
+              meta: { command: "node:template", action: "list", wf_version: "3.0.9" },
               templates,
             }, null, 2));
           } else {
@@ -131,7 +131,7 @@ export function registerNodeTemplate(program: Command): void {
           writeFileSync(join(TEMPLATES_DIR, `${name}.json`), JSON.stringify(template, null, 2), "utf-8");
 
           if (useJson) {
-            console.log(JSON.stringify({ meta: { command: "node:template", action: "save", wf_version: "3.0.8" }, message: `Template "${name}" saved.` }, null, 2));
+            console.log(JSON.stringify({ meta: { command: "node:template", action: "save", wf_version: "3.0.9" }, message: `Template "${name}" saved.` }, null, 2));
           } else {
             console.log(`\n  ${chalk.green("✓")} Template "${chalk.cyan(name)}" saved.\n`);
           }
@@ -151,8 +151,8 @@ export function registerNodeTemplate(program: Command): void {
           const resolved = resolveTargetReference(opts.to);
           if (!resolved) exitWithError("node_not_found", `Target "${opts.to}" not found`, "Run `wf cache:sync` to refresh path lookups");
 
-          const items = template.nodes.map(function toItem(n: TemplateNode): { n: string; d?: string; l?: string; c?: unknown[] } {
-            const item: { n: string; d?: string; l?: string; c?: unknown[] } = { n: substituteVars(n.name) };
+          const items = template.nodes.map(function toItem(n: TemplateNode): LlmDocItem {
+            const item: LlmDocItem = { n: substituteVars(n.name) };
             if (n.note) item.d = substituteVars(n.note);
             if (n.type && n.type !== "bullet") item.l = n.type;
             if (n.children && n.children.length > 0) {
@@ -171,7 +171,7 @@ export function registerNodeTemplate(program: Command): void {
           markTargetDirty(resolved.id);
 
           if (useJson) {
-            console.log(JSON.stringify({ meta: { command: "node:template", action: "apply", wf_version: "3.0.8" }, message: `Template "${name}" applied to ${opts.to}.` }, null, 2));
+            console.log(JSON.stringify({ meta: { command: "node:template", action: "apply", wf_version: "3.0.9" }, message: `Template "${name}" applied to ${opts.to}.` }, null, 2));
           } else {
             console.log(`\n  ${chalk.green("✓")} Template "${chalk.cyan(name)}" applied to ${chalk.cyan(opts.to)}.\n`);
           }
@@ -185,7 +185,7 @@ export function registerNodeTemplate(program: Command): void {
           unlinkSync(delPath);
 
           if (useJson) {
-            console.log(JSON.stringify({ meta: { command: "node:template", action: "delete", wf_version: "3.0.8" }, message: `Template "${name}" deleted.` }, null, 2));
+            console.log(JSON.stringify({ meta: { command: "node:template", action: "delete", wf_version: "3.0.9" }, message: `Template "${name}" deleted.` }, null, 2));
           } else {
             console.log(`\n  ${chalk.red("✗")} Template "${chalk.cyan(name)}" deleted.\n`);
           }

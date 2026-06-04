@@ -35,7 +35,7 @@ Before making tool calls, follow this checklist:
 2. Prefer \`workflowy_targets\` and/or \`bookmarks\` early when you need to discover saved locations, bookmarks, or user guidance.
 3. Prefer \`@targets\`, bookmarks, and cached paths before asking for or relying on raw node IDs.
 4. Use \`read\` or \`workflowy_context\` before structural or destructive changes when surrounding context matters.
-5. Use \`workflowy_batch\` for grouped changes. A single add operation may contain a full multi-line markdown document in \`text\`.
+5. Use \`workflowy_batch\` for grouped changes. Markdown-style text in \`text\` is converted to Workflowy rich text, including common inline formatting and leading markers like \`##\` or \`[ ]\`.
 6. If cached paths or lookups seem stale or missing, call \`sync\` and retry.
 7. If the user shares a WorkFlowy link, extract the hex ID after \`#/\` and use that as the node ID.
 
@@ -61,7 +61,7 @@ Before making tool calls, follow this checklist:
 - Do not assume the cache is current if a path lookup fails; try \`sync\`.
 - Do not search for or create date nodes by plain text when a built-in calendar target such as \`@today\`, \`@tomorrow\`, \`@calendar\`, or \`@next-week\` will do.
 - Do not guess between ambiguous matches; ask or disambiguate.
-- Do not split multi-line markdown into many add operations unless you want separate nodes.
+- Do not split one logical item into many add operations unless you want separate nodes.
 - Do not use raw node IDs when a stable target or cached path is available.
 - Do not make multiple write calls when one batch call will do.
 
@@ -381,13 +381,13 @@ const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "workflowy_batch",
-    description: "Execute multiple operations in a batch. For markdown content, one add op may contain the entire multi-line markdown document in text; do not split it into one op per line unless you want separate nodes.",
+    description: "Execute multiple operations in a batch. Markdown-style text is converted to Workflowy rich text on write; do not split one logical item into one op per line unless you want separate nodes.",
     inputSchema: {
       type: "object",
       properties: {
         ops: {
           type: "array",
-          description: "Array of operations. A single add op may include a full multi-line markdown document in text.",
+          description: "Array of operations. Add text can use Markdown-style formatting that will be converted on write.",
           items: {
             type: "object",
             properties: {
@@ -398,7 +398,7 @@ const MCP_TOOLS: McpTool[] = [
               },
               text: {
                 type: "string",
-                description: "Text for add/capture. This may be a full multi-line markdown document; it does not need to be split line by line.",
+                description: "Text for add/capture. Common Markdown-style formatting is converted to Workflowy rich text on write.",
               },
               to: {
                 type: "string",
@@ -442,7 +442,7 @@ const MCP_TOOLS: McpTool[] = [
       properties: {
         ops: {
           type: "array",
-          description: "Array of operations. A single add op may include a full multi-line markdown document in text.",
+          description: "Array of operations. Add text can use Markdown-style formatting that will be converted on write.",
           items: {
             type: "object",
             properties: {
@@ -453,7 +453,7 @@ const MCP_TOOLS: McpTool[] = [
               },
               text: {
                 type: "string",
-                description: "Text for add/capture. This may be a full multi-line markdown document; it does not need to be split line by line.",
+                description: "Text for add/capture. Common Markdown-style formatting is converted to Workflowy rich text on write.",
               },
               to: {
                 type: "string",
@@ -889,7 +889,7 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
       result: {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "workflowy", version: "3.0.8" },
+        serverInfo: { name: "workflowy", version: "3.0.9" },
         instructions,
       },
     };

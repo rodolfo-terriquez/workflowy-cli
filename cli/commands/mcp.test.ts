@@ -265,7 +265,7 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
     expect(response.jsonrpc).toBe("2.0");
     expect(response.id).toBe(1);
     expect(response.result.protocolVersion).toBe("2024-11-05");
-    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.0.8" });
+    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.0.9" });
     expect(response.result.capabilities).toEqual({ tools: {} });
     expect(response.result.instructions).toContain("## STOP — Read This First");
     expect(response.result.instructions).toContain("workflowy_targets");
@@ -397,7 +397,7 @@ test("responds to content-length framed initialize messages over stdio", async (
   });
 });
 
-test("tools/list explains that workflowy_batch add text may contain full multi-line markdown", async () => {
+test("tools/list explains that workflowy_batch add text is converted from markdown-style formatting", async () => {
   await withTempWorkflowyConfig(async (configDir) => {
     const message = JSON.stringify({
       jsonrpc: "2.0",
@@ -426,8 +426,8 @@ test("tools/list explains that workflowy_batch add text may contain full multi-l
 
     const batchTool = response.result.tools.find((tool) => tool.name === "workflowy_batch");
     expect(batchTool).toBeDefined();
-    expect(batchTool?.description).toContain("multi-line markdown document");
-    expect(batchTool?.inputSchema.properties?.ops?.description).toContain("full multi-line markdown document");
+    expect(batchTool?.description).toContain("Markdown-style text is converted to Workflowy rich text");
+    expect(batchTool?.inputSchema.properties?.ops?.description).toContain("Markdown-style formatting");
   });
 });
 

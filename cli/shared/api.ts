@@ -1,4 +1,5 @@
 import { loadConfig } from "./config.ts";
+import { normalizeLlmDocOperationMarkdown } from "./markdown.ts";
 import {
   extractRetryAfterMs,
   getRateLimitSettings,
@@ -40,21 +41,18 @@ export interface LlmDocOperation {
   op: "insert" | "update" | "delete" | "move";
   under?: string;
   after?: string;
-  items?: Array<{
-    n: string;
-    d?: string;
-    l?: string;
-    x?: number;
-    c?: unknown[];
-  }>;
+  items?: LlmDocItem[];
   position?: "top" | "bottom";
   ref?: string;
-  to?: {
-    n?: string;
-    d?: string;
-    l?: string;
-    x?: number;
-  };
+  to?: Partial<LlmDocItem>;
+}
+
+export interface LlmDocItem {
+  n: string;
+  d?: string;
+  l?: string;
+  x?: number;
+  c?: LlmDocItem[];
 }
 
 const FULL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-([0-9a-f]{12})$/i;
@@ -182,7 +180,7 @@ export class WorkflowyAPI {
   ): Promise<Record<string, unknown>> {
     const normalizedRoot = toLlmDocId(root);
     const normalizedOperations = operations.map((operation) => ({
-      ...operation,
+      ...normalizeLlmDocOperationMarkdown(operation),
       under: operation.under ? toLlmDocId(operation.under) : undefined,
       after: operation.after ? toLlmDocId(operation.after) : undefined,
       ref: operation.ref ? toLlmDocId(operation.ref) : undefined,

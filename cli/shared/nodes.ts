@@ -3,6 +3,9 @@ import type { WFNode } from "./api.ts";
 function cleanHtml(html: string): string {
   let text = html;
 
+  // <br> → newline
+  text = text.replace(/<br\s*\/?>/gi, "\n");
+
   // <a href="url">label</a> → label (url)
   text = text.replace(/<a\s+href="([^"]*)"[^>]*>([^<]*)<\/a>/gi, (_, url, label) => {
     if (label === url || label === "Open in Google Calendar") {
