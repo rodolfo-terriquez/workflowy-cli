@@ -3,7 +3,7 @@ import { fileURLToPath } from "url";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { resetCacheDb, replaceAllNodes } from "../shared/cache.ts";
+import { resetCacheDb, replaceAllNodes, setMeta } from "../shared/cache.ts";
 import { saveConfig } from "../shared/config.ts";
 import { cacheTargets, resetDb, saveBookmark } from "../shared/db.ts";
 import { ensureMcpCacheReadyForInitialize, getMcpCliInvocation, getMcpInitializeSyncReason } from "./mcp.ts";
@@ -191,6 +191,13 @@ test("detects when MCP initialize should re-sync to resolve custom instructions"
   });
 });
 
+test("detects when MCP initialize should warm a hard-stale cache", async () => {
+  await withTempWorkflowyConfig(async () => {
+    setMeta("account:default:last_synced_at", String(Date.now() - 2 * 60 * 60 * 1000));
+    expect(getMcpInitializeSyncReason()).toBe("hard_stale");
+  });
+});
+
 test("runs MCP initialize cache warmup only when needed", async () => {
   await withTempWorkflowyConfig(async () => {
     let syncCalls = 0;
@@ -223,6 +230,32 @@ test("runs MCP initialize cache warmup only when needed", async () => {
           instructionsNode: "instructions-1",
         },
       });
+      return {};
+    });
+
+    expect(syncCalls).toBe(1);
+    expect(getMcpInitializeSyncReason()).toBe(null);
+  });
+});
+
+test("runs MCP initialize cache warmup when the cache is hard stale", async () => {
+  await withTempWorkflowyConfig(async () => {
+    setMeta("account:default:last_synced_at", String(Date.now() - 2 * 60 * 60 * 1000));
+
+    let syncCalls = 0;
+    await ensureMcpCacheReadyForInitialize(async () => {
+      syncCalls += 1;
+      replaceAllNodes([
+        {
+          id: "root-1",
+          parent_id: null,
+          name: "Inbox",
+          note: null,
+          priority: 0,
+          createdAt: 1,
+          modifiedAt: 1,
+        },
+      ]);
       return {};
     });
 
@@ -265,13 +298,14 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
     expect(response.jsonrpc).toBe("2.0");
     expect(response.id).toBe(1);
     expect(response.result.protocolVersion).toBe("2024-11-05");
-    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.0.9" });
+    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.0.10" });
     expect(response.result.capabilities).toEqual({ tools: {} });
     expect(response.result.instructions).toContain("## STOP — Read This First");
     expect(response.result.instructions).toContain("workflowy_targets");
     expect(response.result.instructions).toContain("workflowy_batch");
     expect(response.result.instructions).toContain("@today");
     expect(response.result.instructions).toContain("<time startYear=\"2026\" startMonth=\"6\" startDay=\"3\">Jun 3, 2026</time>");
+    expect(response.result.instructions).toContain("auto-refreshes the local cache");
   });
 });
 

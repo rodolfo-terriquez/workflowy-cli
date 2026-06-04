@@ -161,8 +161,16 @@ export function getNodeById(id: string): CachedNode | null {
 
   // 12-hex tags from the LLM doc API are the last segment of v1 UUIDs
   if (/^[0-9a-f]{8,12}$/i.test(id)) {
-    return db.query("SELECT * FROM nodes WHERE id LIKE ? LIMIT 1")
-      .get(`%-${id}`) as CachedNode | null;
+    const tagMatches = db.query("SELECT * FROM nodes WHERE id LIKE ? LIMIT 2")
+      .all(`%-${id}`) as CachedNode[];
+    if (tagMatches.length === 1) return tagMatches[0] ?? null;
+  }
+
+  // Short UUID prefixes from CLI output should also resolve consistently.
+  if (/^[0-9a-f]{8,}$/i.test(id)) {
+    const prefixMatches = db.query("SELECT * FROM nodes WHERE LOWER(id) LIKE LOWER(?) LIMIT 2")
+      .all(`${id}%`) as CachedNode[];
+    if (prefixMatches.length === 1) return prefixMatches[0] ?? null;
   }
 
   return null;

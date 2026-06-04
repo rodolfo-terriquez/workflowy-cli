@@ -2,7 +2,7 @@ import type { Command } from "commander";
 import chalk from "chalk";
 import { isAgentMode } from "../agent.ts";
 import { loadConfig } from "../shared/config.ts";
-import { getCacheNodeCount } from "../shared/cache.ts";
+import { getCacheAgeSeconds, getCacheNodeCount } from "../shared/cache.ts";
 import { getConfiguredMcpInstructions, getConfiguredMcpInstructionsTarget, resolveConfiguredMcpInstructionsNode } from "../shared/mcp-instructions.ts";
 import { doSync } from "./sync.ts";
 
@@ -15,6 +15,27 @@ interface McpTool {
 interface ToolCallResult {
   text: string;
   isError?: boolean;
+}
+
+interface McpToolInvocation {
+  name: string;
+  args: Record<string, unknown>;
+  cmdArgs: string[];
+  usesBatchStdin: boolean;
+}
+
+interface CliExecutionResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+interface CliErrorPayload {
+  error?: {
+    code?: string;
+    message?: string;
+    hint?: string;
+  };
 }
 
 export function getMcpCliInvocation(cmdArgs: string[], mainPath = Bun.main, execPath = process.execPath): string[] {
@@ -36,7 +57,7 @@ Before making tool calls, follow this checklist:
 3. Prefer \`@targets\`, bookmarks, and cached paths before asking for or relying on raw node IDs.
 4. Use \`read\` or \`workflowy_context\` before structural or destructive changes when surrounding context matters.
 5. Use \`workflowy_batch\` for grouped changes. Markdown-style text in \`text\` is converted to Workflowy rich text, including common inline formatting and leading markers like \`##\` or \`[ ]\`.
-6. If cached paths or lookups seem stale or missing, call \`sync\` and retry.
+6. Under normal conditions the MCP server auto-refreshes the local cache when it is empty, stale, or a cache-backed lookup appears out of date. Use \`sync\` only if that automatic refresh fails or you need to force it.
 7. If the user shares a WorkFlowy link, extract the hex ID after \`#/\` and use that as the node ID.
 
 ## Key Concepts
@@ -58,7 +79,7 @@ Before making tool calls, follow this checklist:
 
 ## Common Mistakes to Avoid
 
-- Do not assume the cache is current if a path lookup fails; try \`sync\`.
+- Do not assume you need to manage cache refreshes manually; the MCP server usually does that for you. Use \`sync\` when automatic refresh fails or you need to force a full refresh.
 - Do not search for or create date nodes by plain text when a built-in calendar target such as \`@today\`, \`@tomorrow\`, \`@calendar\`, or \`@next-week\` will do.
 - Do not guess between ambiguous matches; ask or disambiguate.
 - Do not split one logical item into many add operations unless you want separate nodes.
@@ -68,6 +89,7 @@ Before making tool calls, follow this checklist:
 ## Tips
 
 - \`status\` helps you detect auth, API, and cache issues before other tool calls.
+- Cache refresh is normally automatic in MCP sessions; \`sync\` remains available as a manual fallback.
 - \`workflowy_targets\` helps you learn what the account exposes.
 - \`bookmarks\` may include bookmark context notes that help with navigation.
 - For date-related work, prefer built-in calendar targets such as \`@today\`, \`@tomorrow\`, \`@calendar\`, and \`@next-week\` instead of searching for date nodes by text.
@@ -75,7 +97,13 @@ Before making tool calls, follow this checklist:
 - \`workflowy_context\` is often better than a deep read when you need nearby siblings and ancestors.
 - Use smaller reads first, then expand depth only if needed.`;
 
-let mcpInitializeSyncPromise: Promise<void> | null = null;
+const MCP_SOFT_STALE_SECONDS = 300;
+const MCP_HARD_STALE_SECONDS = 1800;
+const MCP_AUTO_SYNC_COOLDOWN_MS = 5 * 60_000;
+const DIRECT_ID_RE = /^[0-9a-f]{8,}(-[0-9a-f]{4,}){0,4}$/i;
+
+let mcpAutoSyncPromise: Promise<{ ok: boolean; error?: string; reason: string }> | null = null;
+let mcpAutoSyncStartedAt = 0;
 
 function getInitializeInstructions(maxDepth = 4): string {
   const parts = [DEFAULT_MCP_INSTRUCTIONS];
@@ -92,37 +120,93 @@ function getUserInitializeInstructions(maxDepth = 4): string | null {
   return getConfiguredMcpInstructions(maxDepth);
 }
 
-export function getMcpInitializeSyncReason(): "cache_empty" | "instructions_unresolved" | null {
+function getMcpSoftStaleReason(): "stale" | null {
+  const age = getCacheAgeSeconds();
+  if (age === null) return null;
+  return age > MCP_SOFT_STALE_SECONDS ? "stale" : null;
+}
+
+export function getMcpInitializeSyncReason(): "cache_empty" | "instructions_unresolved" | "hard_stale" | null {
   if (getCacheNodeCount() === 0) {
     return "cache_empty";
   }
 
   const configured = getConfiguredMcpInstructionsTarget();
-  if (!configured) return null;
+  if (configured && !resolveConfiguredMcpInstructionsNode()) {
+    return "instructions_unresolved";
+  }
 
-  return resolveConfiguredMcpInstructionsNode() ? null : "instructions_unresolved";
+  const age = getCacheAgeSeconds();
+  if (age !== null && age > MCP_HARD_STALE_SECONDS) {
+    return "hard_stale";
+  }
+
+  return null;
 }
 
 export async function ensureMcpCacheReadyForInitialize(
   syncFn: (opts?: { silent?: boolean }) => Promise<unknown> = doSync,
 ): Promise<boolean> {
-  const reason = getMcpInitializeSyncReason();
-  if (!reason) return false;
-
-  if (!mcpInitializeSyncPromise) {
-    mcpInitializeSyncPromise = (async () => {
-      try {
-        await syncFn({ silent: true });
-      } catch {
-        // Best-effort warmup only. MCP initialization should still succeed even if sync fails.
-      } finally {
-        mcpInitializeSyncPromise = null;
-      }
-    })();
+  const blockingReason = getMcpInitializeSyncReason();
+  if (blockingReason) {
+    await requestMcpAutoSync(blockingReason, { blocking: true, force: true, syncFn });
+    return true;
   }
 
-  await mcpInitializeSyncPromise;
-  return true;
+  if (getMcpSoftStaleReason()) {
+    void requestMcpAutoSync("stale_initialize", { blocking: false, syncFn });
+    return true;
+  }
+
+  return false;
+}
+
+async function requestMcpAutoSync(
+  reason: string,
+  opts: {
+    blocking: boolean;
+    force?: boolean;
+    syncFn?: (options?: { silent?: boolean }) => Promise<unknown>;
+  },
+): Promise<{ attempted: boolean; ok: boolean; shared: boolean; skipped?: "cooldown"; error?: string; reason: string }> {
+  const syncFn = opts.syncFn ?? doSync;
+
+  if (mcpAutoSyncPromise) {
+    if (opts.blocking) {
+      const result = await mcpAutoSyncPromise;
+      return { attempted: true, ok: result.ok, shared: true, error: result.error, reason: result.reason };
+    }
+    return { attempted: true, ok: true, shared: true, reason };
+  }
+
+  const now = Date.now();
+  if (!opts.force && now - mcpAutoSyncStartedAt < MCP_AUTO_SYNC_COOLDOWN_MS) {
+    return { attempted: false, ok: false, shared: false, skipped: "cooldown", reason };
+  }
+
+  mcpAutoSyncStartedAt = now;
+  mcpAutoSyncPromise = (async () => {
+    try {
+      await syncFn({ silent: true });
+      return { ok: true, reason };
+    } catch (error) {
+      return {
+        ok: false,
+        reason,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      mcpAutoSyncPromise = null;
+    }
+  })();
+
+  if (opts.blocking) {
+    const result = await mcpAutoSyncPromise;
+    return { attempted: true, ok: result.ok, shared: false, error: result.error, reason: result.reason };
+  }
+
+  void mcpAutoSyncPromise;
+  return { attempted: true, ok: true, shared: false, reason };
 }
 
 const MCP_TOOLS: McpTool[] = [
@@ -539,7 +623,7 @@ const MCP_TOOLS: McpTool[] = [
   },
 ];
 
-async function handleToolCall(name: string, args: Record<string, unknown>): Promise<ToolCallResult> {
+function buildToolInvocation(name: string, args: Record<string, unknown>): McpToolInvocation | null {
   const cmdMap: Record<string, string[]> = {
     workflowy_read: ["node:read", String(args.target ?? "@inbox"), ...(args.depth ? ["--depth", String(args.depth)] : []), ...(args.live ? ["--live"] : [])],
     read: ["node:read", String(args.target ?? "@inbox"), ...(args.depth ? ["--depth", String(args.depth)] : []), ...(args.live ? ["--live"] : [])],
@@ -573,55 +657,39 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
   };
 
   const cmdArgs = cmdMap[name];
-  if (!cmdArgs) {
+  if (!cmdArgs) return null;
+
+  return {
+    name,
+    args,
+    cmdArgs,
+    usesBatchStdin: name === "workflowy_batch" || name === "batch",
+  };
+}
+
+async function handleToolCall(name: string, args: Record<string, unknown>): Promise<ToolCallResult> {
+  const invocation = buildToolInvocation(name, args);
+  if (!invocation) {
     return {
       text: JSON.stringify({ error: { code: "unknown_tool", message: `Unknown tool: ${name}` } }, null, 2),
       isError: true,
     };
   }
 
-  const usesBatchStdin = name === "workflowy_batch" || name === "batch";
+  await maybePreflightAutoSync(invocation);
 
-  const proc = Bun.spawn(getMcpCliInvocation(cmdArgs), {
-    stdin: usesBatchStdin ? "pipe" : "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  const initialResult = await executeToolInvocation(invocation);
+  const recoveredResult = await maybeRecoverToolCall(invocation, initialResult);
+  const finalResult = recoveredResult ?? initialResult;
+  const finalStdout = finalResult.stdout.trim();
+  const finalStderr = finalResult.stderr.trim();
 
-  if (usesBatchStdin) {
-    const stdin = proc.stdin;
-    if (!stdin) {
-      return {
-        text: JSON.stringify({
-          error: {
-            code: "tool_call_failed",
-            message: "workflowy_batch could not open stdin for batch input",
-            tool: name,
-          },
-        }, null, 2),
-        isError: true,
-      };
-    }
-
-    stdin.write(JSON.stringify(args.ops ?? []));
-    stdin.end();
-  }
-
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-
-  const trimmedStdout = stdout.trim();
-  const trimmedStderr = stderr.trim();
-
-  if (exitCode !== 0 && name !== "status") {
+  if (finalResult.exitCode !== 0 && name !== "status") {
     return {
-      text: trimmedStdout || JSON.stringify({
+      text: finalStdout || JSON.stringify({
         error: {
           code: "tool_call_failed",
-          message: trimmedStderr || `wf command failed with exit code ${exitCode}`,
+          message: finalStderr || `wf command failed with exit code ${finalResult.exitCode}`,
           tool: name,
         },
       }, null, 2),
@@ -629,7 +697,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
     };
   }
 
-  if (!trimmedStdout) {
+  if (!finalStdout) {
     return {
       text: JSON.stringify({
         error: {
@@ -643,9 +711,224 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
   }
 
   return {
-    text: trimmedStdout,
+    text: finalStdout,
     isError: false,
   };
+}
+
+async function executeToolInvocation(invocation: McpToolInvocation): Promise<CliExecutionResult> {
+  const proc = Bun.spawn(getMcpCliInvocation(invocation.cmdArgs), {
+    stdin: invocation.usesBatchStdin ? "pipe" : "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  if (invocation.usesBatchStdin) {
+    const stdin = proc.stdin;
+    if (!stdin) {
+      return {
+        stdout: JSON.stringify({
+          error: {
+            code: "tool_call_failed",
+            message: "workflowy_batch could not open stdin for batch input",
+            tool: invocation.name,
+          },
+        }, null, 2),
+        stderr: "",
+        exitCode: 1,
+      };
+    }
+
+    stdin.write(JSON.stringify(invocation.args.ops ?? []));
+    stdin.end();
+  }
+
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  return { stdout, stderr, exitCode };
+}
+
+async function maybePreflightAutoSync(invocation: McpToolInvocation): Promise<void> {
+  if (!shouldPreflightCheckCache(invocation)) return;
+
+  const blockingReason = getMcpInitializeSyncReason();
+  if (blockingReason) {
+    await requestMcpAutoSync(`tool_preflight:${blockingReason}`, { blocking: true, force: true });
+    return;
+  }
+
+  if (getMcpSoftStaleReason()) {
+    void requestMcpAutoSync(`tool_preflight:stale:${invocation.name}`, { blocking: false });
+  }
+}
+
+async function maybeRecoverToolCall(
+  invocation: McpToolInvocation,
+  result: CliExecutionResult,
+): Promise<CliExecutionResult | null> {
+  if (result.exitCode === 0 || invocation.name === "status") {
+    return null;
+  }
+
+  const parsedError = parseCliError(result.stdout);
+  if (!parsedError?.error?.code) {
+    return null;
+  }
+
+  if (shouldUseLiveReadFallback(invocation, parsedError)) {
+    const liveResult = await executeToolInvocation({
+      ...invocation,
+      cmdArgs: withLiveReadFlag(invocation.cmdArgs),
+    });
+
+    if (liveResult.exitCode === 0 && liveResult.stdout.trim()) {
+      const liveSyncAttempt = await requestMcpAutoSync(`tool_recovery:live:${invocation.name}`, { blocking: false });
+      return annotateCliExecutionResult(liveResult, {
+        fallback: "live_read",
+        auto_sync: {
+          status: liveSyncAttempt.attempted ? "scheduled" : liveSyncAttempt.skipped === "cooldown" ? "skipped_cooldown" : "shared",
+          reason: liveSyncAttempt.reason,
+        },
+      });
+    }
+  }
+
+  if (!shouldRetryAfterSync(invocation, parsedError)) {
+    return null;
+  }
+
+  const syncAttempt = await requestMcpAutoSync(`tool_recovery:${invocation.name}`, { blocking: true });
+  if (!syncAttempt.attempted || !syncAttempt.ok) {
+    return annotateCliExecutionResult(result, {
+      auto_sync: {
+        status: syncAttempt.skipped === "cooldown" ? "skipped_cooldown" : "failed",
+        reason: syncAttempt.reason,
+        error: syncAttempt.error,
+      },
+    });
+  }
+
+  const retried = await executeToolInvocation(invocation);
+  return annotateCliExecutionResult(retried, {
+    auto_sync: {
+      status: "retried",
+      reason: syncAttempt.reason,
+      shared: syncAttempt.shared,
+    },
+  });
+}
+
+function shouldPreflightCheckCache(invocation: McpToolInvocation): boolean {
+  if (["workflowy_sync", "sync", "status"].includes(invocation.name)) {
+    return false;
+  }
+
+  if ((invocation.name === "workflowy_read" || invocation.name === "read") && invocation.args.live) {
+    return false;
+  }
+
+  if ((invocation.name === "workflowy_search" || invocation.name === "search") && invocation.args.live) {
+    return false;
+  }
+
+  return true;
+}
+
+function shouldUseLiveReadFallback(invocation: McpToolInvocation, payload: CliErrorPayload): boolean {
+  if (!["workflowy_read", "read"].includes(invocation.name)) return false;
+  if (invocation.args.live) return false;
+  if (payload.error?.code !== "node_not_found") return false;
+
+  const target = String(invocation.args.target ?? "@inbox");
+  return looksLikeDirectId(target);
+}
+
+function shouldRetryAfterSync(invocation: McpToolInvocation, payload: CliErrorPayload): boolean {
+  const code = payload.error?.code;
+  if (!code) return false;
+
+  if (code === "cache_empty") return true;
+  if (code !== "node_not_found") return false;
+
+  switch (invocation.name) {
+    case "workflowy_read":
+    case "read":
+      return !invocation.args.live && isLikelyStaleLookup(String(invocation.args.target ?? "@inbox"));
+    case "workflowy_context":
+    case "context":
+    case "workflowy_update":
+    case "update":
+    case "workflowy_complete":
+    case "complete":
+      return isLikelyStaleLookup(String(invocation.args.nodeId ?? ""));
+    case "workflowy_move":
+    case "move":
+      return isLikelyStaleLookup(String(invocation.args.nodeId ?? "")) || isLikelyStaleLookup(String(invocation.args.to ?? ""));
+    case "workflowy_add":
+    case "add":
+      return isLikelyStaleLookup(String(invocation.args.to ?? "@inbox"));
+    case "save_bookmark":
+      return isLikelyStaleLookup(String(invocation.args.target ?? ""));
+    case "workflowy_search":
+    case "search":
+      return !!invocation.args.target && isLikelyStaleLookup(String(invocation.args.target));
+    default:
+      return false;
+  }
+}
+
+function isLikelyStaleLookup(input: string): boolean {
+  if (!input) return false;
+  if (input.startsWith("@")) return true;
+  if (looksLikeDirectId(input)) return true;
+  return input.includes("/");
+}
+
+function looksLikeDirectId(input: string): boolean {
+  return DIRECT_ID_RE.test(input);
+}
+
+function withLiveReadFlag(cmdArgs: string[]): string[] {
+  return cmdArgs.includes("--live") ? [...cmdArgs] : [...cmdArgs, "--live"];
+}
+
+function parseCliError(stdout: string): CliErrorPayload | null {
+  const trimmed = stdout.trim();
+  if (!trimmed.startsWith("{")) return null;
+
+  try {
+    return JSON.parse(trimmed) as CliErrorPayload;
+  } catch {
+    return null;
+  }
+}
+
+function annotateCliExecutionResult(
+  result: CliExecutionResult,
+  metadata: Record<string, unknown>,
+): CliExecutionResult {
+  const trimmed = result.stdout.trim();
+  if (!trimmed.startsWith("{")) {
+    return result;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    parsed._mcp = {
+      ...(typeof parsed._mcp === "object" && parsed._mcp ? parsed._mcp as Record<string, unknown> : {}),
+      ...metadata,
+    };
+    return {
+      ...result,
+      stdout: JSON.stringify(parsed, null, 2),
+    };
+  } catch {
+    return result;
+  }
 }
 
 export function registerMcp(program: Command): void {
@@ -889,7 +1172,7 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
       result: {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "workflowy", version: "3.0.9" },
+        serverInfo: { name: "workflowy", version: "3.0.10" },
         instructions,
       },
     };

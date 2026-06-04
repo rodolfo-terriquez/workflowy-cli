@@ -70,6 +70,32 @@ test("read alias resolves to node:read", async () => {
   expect(parsed.children.map((node) => node.id)).toEqual(["child-1"]);
 });
 
+test("node:read resolves short UUID prefixes from the cache", async () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: {
+      default: { name: "default", token: "token-default" },
+    },
+  });
+
+  cacheModule.replaceAllNodes([
+    {
+      id: "a5de1cca-1b91-ed4f-bc34-ec5e2aec6bd9",
+      name: "Week 23 (Jun 1-5, 2026)",
+      parent_id: null,
+      modifiedAt: 100,
+    },
+  ]);
+
+  const result = await runCli(["node:read", "a5de1cca", "--format", "json"]);
+  expect(result.exitCode).toBe(0);
+
+  const parsed = JSON.parse(result.stdout) as { meta: { resolved_id: string }; node: { id: string; name: string } };
+  expect(parsed.meta.resolved_id).toBe("a5de1cca-1b91-ed4f-bc34-ec5e2aec6bd9");
+  expect(parsed.node.id).toBe("a5de1cca-1b91-ed4f-bc34-ec5e2aec6bd9");
+  expect(parsed.node.name).toBe("Week 23 (Jun 1-5, 2026)");
+});
+
 test("sync alias resolves to cache:sync status mode without hitting the API", async () => {
   const result = await runCli(["--agent", "sync", "--status"]);
   expect(result.exitCode).toBe(0);

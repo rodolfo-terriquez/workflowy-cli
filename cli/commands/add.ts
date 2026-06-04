@@ -3,6 +3,8 @@ import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
 import { requireToken } from "../shared/config.ts";
 import { getCacheNodeCount, markTargetDirty } from "../shared/cache.ts";
+import { parseLlmDocResponse } from "../shared/nodes.ts";
+import { verifyInsertedChild } from "../shared/insert-verification.ts";
 import { resolveTargetReference } from "../shared/path.ts";
 import { formatJson } from "../output/json.ts";
 import { buildWriteSuccessOutput } from "../shared/write-response.ts";
@@ -52,6 +54,9 @@ export function registerNodeAdd(program: Command): void {
         if (opts.note) item.d = opts.note;
         if (opts.type !== "bullet") item.l = opts.type;
 
+        const shouldVerifyInsert = isAgentMode() || !!opts.after;
+        const beforeChildren = shouldVerifyInsert ? await readLiveChildren(api, resolvedId) : [];
+
         if (opts.after) {
           await api.editDoc(resolvedId, [
             { op: "insert", after: opts.after, items: [item] },
@@ -64,6 +69,38 @@ export function registerNodeAdd(program: Command): void {
 
         markTargetDirty(resolvedId);
         const useJson = opts.format === "json" || isAgentMode();
+        let createdNodeId: string | undefined;
+        let createdNodeText: string | undefined;
+        let verificationStatus: "verified" | "mismatch" | "not_found" | "ambiguous" | "skipped" = "skipped";
+
+        if (shouldVerifyInsert) {
+          try {
+            const afterChildren = await readLiveChildren(api, resolvedId);
+            const verification = verifyInsertedChild({
+              beforeChildren,
+              afterChildren,
+              requestedText: text,
+              afterId: opts.after,
+              position: opts.position as "top" | "bottom",
+            });
+
+            verificationStatus = verification.status;
+            createdNodeId = verification.createdNodeId ?? undefined;
+            createdNodeText = verification.createdNodeText ?? undefined;
+
+            if (verification.status !== "verified") {
+              exitWithError(
+                "write_verification_failed",
+                `node:add completed but could not verify the created node. ${verification.message}`,
+                createdNodeId
+                  ? `Try \`wf node:update ${createdNodeId} --text ${JSON.stringify(text)}\` if you want to repair the inserted node.`
+                  : "Read the parent live to inspect what was inserted before retrying.",
+              );
+            }
+          } catch {
+            verificationStatus = "skipped";
+          }
+        }
 
         if (useJson) {
           console.log(formatJson(buildWriteSuccessOutput({
@@ -71,11 +108,15 @@ export function registerNodeAdd(program: Command): void {
             target,
             resolvedId,
             message: `Added to ${resolvedLabel}`,
-            affectedNodeIds: [resolvedId],
+            affectedNodeIds: [resolvedId, createdNodeId],
             dirtyNodeIds: [resolvedId],
             details: {
               parent_id: resolvedId,
               insert_after_id: opts.after,
+              created_node_id: createdNodeId,
+              created_node_text: createdNodeText,
+              write_verified: verificationStatus === "verified",
+              verification_status: verificationStatus,
               requested_node: {
                 text,
                 note: opts.note,
@@ -91,4 +132,9 @@ export function registerNodeAdd(program: Command): void {
         }
       }
     );
+}
+
+async function readLiveChildren(api: WorkflowyAPI, nodeId: string) {
+  const data = await api.readDoc(nodeId, 1);
+  return parseLlmDocResponse(data).node.children;
 }
