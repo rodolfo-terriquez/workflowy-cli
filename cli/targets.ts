@@ -9,6 +9,7 @@ import {
   listBookmarks,
   normalizeBookmarkName,
 } from "./shared/db.ts";
+import { buildBreadcrumb, getNodeById } from "./shared/cache.ts";
 
 export interface ResolvedTarget {
   id: string;
@@ -86,6 +87,9 @@ export async function listAllTargets(
         key: target.key,
         type: target.type,
         name: target.label,
+        nodeId: target.nodeId,
+        path: target.nodeId ? buildTargetPath(target.nodeId) : null,
+        kind: target.type === "system" ? "system" : "bookmark",
       })),
       account,
     );
@@ -114,16 +118,30 @@ function mergeLocalBookmarks(targets: WFTarget[], account: string): WFTarget[] {
       key: normalizeTargetKey(target.key),
       type: target.type,
       name: target.name,
+      nodeId: target.nodeId ?? null,
+      context: target.context ?? null,
+      path: target.path ?? (target.nodeId ? buildTargetPath(target.nodeId) : null),
+      kind: target.kind ?? (target.type === "system" ? "system" : "bookmark"),
     });
   }
 
   for (const bookmark of listBookmarks(account)) {
+    const node = getNodeById(bookmark.nodeId);
     merged.set(bookmark.name, {
       key: bookmark.name,
       type: "shortcut",
-      name: bookmark.context || bookmark.name,
+      name: node?.name ?? bookmark.name,
+      context: bookmark.context,
+      nodeId: bookmark.nodeId,
+      path: node ? buildBreadcrumb(bookmark.nodeId).join(" > ") : null,
+      kind: "bookmark",
     });
   }
 
   return [...merged.values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+
+function buildTargetPath(nodeId: string): string | null {
+  const path = buildBreadcrumb(nodeId);
+  return path.length > 0 ? path.join(" > ") : null;
 }

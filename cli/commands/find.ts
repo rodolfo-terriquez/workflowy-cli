@@ -59,7 +59,7 @@ export function registerNodeFind(program: Command): void {
             account: config.activeAccount,
             cache_age_seconds: cacheAge,
             cache_stale: isCacheStale(),
-            wf_version: "3.0.10",
+            wf_version: "3.0.11",
           },
           nodes: matches.map((m) => ({
             id: m.id,

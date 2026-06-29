@@ -6,7 +6,7 @@
   ╚╩╝╚═╝╩╚═╩ ╩╚  ╩═╝╚═╝╚╩╝ ╩
 ```
 
-Command-line interface for [WorkFlowy](https://workflowy.com) built for agents, automations, and power users.
+`wf` is the WorkFlowy command-line and agent toolkit: a local-first CLI, cache, automation layer, and MCP server that lets humans, scripts, and AI agents safely read, search, organize, and edit a WorkFlowy account.
 
 This project is WorkFlowy-native:
 
@@ -18,7 +18,7 @@ This project is WorkFlowy-native:
 
 ## Status
 
-Current version: `3.0.9`
+Current version: `3.0.11`
 
 Implemented today:
 
@@ -35,6 +35,8 @@ Implemented today:
 Requires [Bun](https://bun.sh).
 
 ```bash
+git clone https://github.com/rodolfo-terriquez/workflowy-cli.git
+cd workflowy-cli
 bun install
 bun run build
 ```
@@ -68,6 +70,28 @@ wf search "campaign"
 wf targets
 ```
 
+## Quick Demos
+
+```bash
+wf login
+wf cache:sync
+wf search "weekly review"
+wf node:read @inbox --depth 2
+wf node:add @inbox "Follow up with Jane" --type todo
+wf ai:propose "Clean up my inbox and group related items"
+wf ai:preview
+wf ai:apply
+wf mcp
+```
+
+For agent workflows:
+
+```bash
+wf search "project roadmap" --agent
+wf node:read @today --depth 3 --agent
+wf batch < ops.json
+```
+
 ## Command Surface
 
 ### Node commands
@@ -85,6 +109,7 @@ wf node:todos
 wf node:bulk complete|delete|move
 wf node:template list|save|apply|delete
 wf node:export <target>
+wf doc:edit <root> < ops.json
 ```
 
 ### Top-level commands
@@ -95,6 +120,7 @@ wf tags
 wf targets
 wf history
 wf batch
+wf doc:edit <root> < ops.json
 wf mcp
 wf completions install
 wf doctor
@@ -192,6 +218,37 @@ wf node:template apply standup --to @inbox
 wf node:bulk complete --filter "type:todo completed:false" --target @today
 wf node:bulk move --filter "tag:#archive" --to @inbox --dry-run
 ```
+
+### Advanced structured edits
+
+Use `batch` for common agent operations. Use `doc:edit` when an agent needs full structured edit control compatible with the older local MCP `edit_doc` tool: nested inserts, `after`, richer line types, layout changes, updates, moves, and deletes.
+
+```bash
+cat > ops.json <<'JSON'
+[
+  {
+    "op": "insert",
+    "under": "@inbox",
+    "items": [
+      {
+        "n": "Project brief",
+        "l": "h2",
+        "c": [
+          { "n": "Draft outline", "l": "todo", "x": 0 },
+          { "n": "Notes", "d": "created by wf doc:edit" }
+        ]
+      }
+    ],
+    "position": "top"
+  }
+]
+JSON
+
+wf doc:edit @inbox < ops.json
+wf doc:edit @inbox < ops.json --agent
+```
+
+For simple grouped changes, prefer `wf batch`; it has a smaller schema and is easier for most agents to use safely.
 
 ### Batch mode
 
@@ -351,6 +408,23 @@ wf mcp --port 3399
 
 `wf mcp` supports stdio transport by default and HTTP/SSE when `--port` is provided.
 
+MCP client config example:
+
+```json
+{
+  "mcpServers": {
+    "workflowy": {
+      "command": "/absolute/path/to/wf",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Run `wf login` and `wf cache:sync` first. The MCP server uses the same local config and cache as the CLI.
+
+MCP exposes friendly tools for common tasks (`read`, `search`, `add`, `batch`) plus `edit_doc` for advanced structured edits. `edit_doc` maps back to the CLI `doc:edit` command, so the CLI remains the canonical implementation.
+
 #### MCP instructions
 
 `wf mcp` always sends built-in bootstrap instructions during MCP `initialize` so agents know how to use the server well. On first MCP use for an account, it will also try a best-effort cache warmup when the active account has no usable cache yet, or when a configured instructions node cannot be resolved from cache.
@@ -391,7 +465,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:read",
-    "wf_version": "3.0.9"
+    "wf_version": "3.0.11"
   },
   "node": {},
   "children": []
@@ -404,7 +478,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "search",
-    "wf_version": "3.0.9"
+    "wf_version": "3.0.11"
   },
   "nodes": []
 }
@@ -416,7 +490,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:add",
-    "wf_version": "3.0.9"
+    "wf_version": "3.0.11"
   },
   "message": "..."
 }
@@ -467,8 +541,9 @@ wf account:current
 ```bash
 bun install
 bun run typecheck
-bun test cli/shared/smart-search.test.ts cli/commands/mcp.test.ts
+bun test
 bun run build
+./dist/wf --version
 ```
 
 Helpful local checks:
@@ -479,6 +554,14 @@ Helpful local checks:
 ./dist/wf doctor
 ./dist/wf cache:sync --status --agent
 ```
+
+CI runs those core checks on push and pull request.
+
+Release steps are documented in `RELEASE.md`.
+
+## License
+
+MIT
 
 ## Project Layout
 

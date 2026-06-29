@@ -56,9 +56,10 @@ Before making tool calls, follow this checklist:
 2. Prefer \`workflowy_targets\` and/or \`bookmarks\` early when you need to discover saved locations, bookmarks, or user guidance.
 3. Prefer \`@targets\`, bookmarks, and cached paths before asking for or relying on raw node IDs.
 4. Use \`read\` or \`workflowy_context\` before structural or destructive changes when surrounding context matters.
-5. Use \`workflowy_batch\` for grouped changes. Markdown-style text in \`text\` is converted to Workflowy rich text, including common inline formatting and leading markers like \`##\` or \`[ ]\`.
-6. Under normal conditions the MCP server auto-refreshes the local cache when it is empty, stale, or a cache-backed lookup appears out of date. Use \`sync\` only if that automatic refresh fails or you need to force it.
-7. If the user shares a WorkFlowy link, extract the hex ID after \`#/\` and use that as the node ID.
+5. Use \`workflowy_batch\` for grouped common changes. Markdown-style text in \`text\` is converted to Workflowy rich text, including common inline formatting and leading markers like \`##\` or \`[ ]\`.
+6. Use \`edit_doc\` only when you need advanced structured edits such as nested inserts, insert-after, richer line types, layout changes, or old local-MCP-style raw operations.
+7. Under normal conditions the MCP server auto-refreshes the local cache when it is empty, stale, or a cache-backed lookup appears out of date. Use \`sync\` only if that automatic refresh fails or you need to force it.
+8. If the user shares a WorkFlowy link, extract the hex ID after \`#/\` and use that as the node ID.
 
 ## Key Concepts
 
@@ -76,6 +77,7 @@ Before making tool calls, follow this checklist:
 - To add a new node: use \`workflowy_add\`.
 - To rename or change a note: use \`workflowy_update\`.
 - To move, complete, or delete multiple things together: prefer \`workflowy_batch\`.
+- To perform advanced raw structured edits: use \`edit_doc\`.
 
 ## Common Mistakes to Avoid
 
@@ -355,6 +357,73 @@ const MCP_TOOLS: McpTool[] = [
         context: { type: "string", description: "Optional context note for agents" },
       },
       required: ["name", "target"],
+    },
+  },
+  {
+    name: "edit_doc",
+    description: "Advanced structured document edit. This is the parity escape hatch for agents that need old local-MCP-style operations: nested inserts, insert-after, richer line types, updates, moves, and deletes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        root: {
+          type: "string",
+          description: "The subtree root: @target, path, node ID, or cached target. Operations are applied relative to this root.",
+        },
+        operations: {
+          type: "array",
+          description: "Array of structured edit operations. Supports insert/update/delete/move with nested item trees.",
+          items: {
+            type: "object",
+            properties: {
+              op: { type: "string", enum: ["insert", "update", "delete", "move"] },
+              under: { type: "string", description: "For insert/move: parent target or node ID." },
+              after: { type: "string", description: "For insert: sibling node ID/target to insert after." },
+              items: {
+                type: "array",
+                description: "For insert: nodes to create. Children can be nested with c.",
+                items: {
+                  type: "object",
+                  properties: {
+                    n: { type: "string", description: "Node text" },
+                    d: { type: "string", description: "Optional note" },
+                    l: { type: "string", enum: ["todo", "h1", "h2", "h3", "p", "bullets", "code", "quote", "table"], description: "Line/layout type" },
+                    x: { type: "number", enum: [0, 1], description: "Completion status (1 = complete)" },
+                    c: { type: "array", description: "Nested child items" },
+                  },
+                  required: ["n"],
+                },
+              },
+              position: { type: "string", enum: ["top", "bottom"], description: "For insert/move: target position" },
+              ref: { type: "string", description: "For update/delete/move: node ID or cached path" },
+              to: {
+                type: "object",
+                description: "For update: replacement fields",
+                properties: {
+                  n: { type: "string", description: "New node text" },
+                  d: { type: "string", description: "New note" },
+                  l: { type: "string", enum: ["todo", "h1", "h2", "h3", "p", "bullets", "code", "quote", "table"], description: "New line/layout type" },
+                  x: { type: "number", enum: [0, 1], description: "Completion status" },
+                  c: { type: "array", description: "Nested children if supported by the API" },
+                },
+              },
+            },
+            required: ["op"],
+          },
+        },
+      },
+      required: ["root", "operations"],
+    },
+  },
+  {
+    name: "workflowy_edit_doc",
+    description: "Alias of edit_doc for advanced structured document edits.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        root: { type: "string", description: "The subtree root: @target, path, node ID, or cached target." },
+        operations: { type: "array", description: "Array of structured edit operations." },
+      },
+      required: ["root", "operations"],
     },
   },
   {
@@ -638,6 +707,8 @@ function buildToolInvocation(name: string, args: Record<string, unknown>): McpTo
     list_bookmarks: ["bookmark:list", "--format", "json"],
     bookmarks: ["bookmark:list", "--format", "json"],
     save_bookmark: ["bookmark:save", String(args.name ?? ""), String(args.target ?? ""), ...(args.context ? ["--context", String(args.context)] : []), "--format", "json"],
+    edit_doc: ["doc:edit", String(args.root ?? "")],
+    workflowy_edit_doc: ["doc:edit", String(args.root ?? "")],
     workflowy_search: ["search", String(args.query ?? ""), ...(args.smart ? ["--smart"] : []), ...(args.live ? ["--live"] : []), ...(args.target ? ["--target", String(args.target)] : [])],
     search: ["search", String(args.query ?? ""), ...(args.smart ? ["--smart"] : []), ...(args.live ? ["--live"] : []), ...(args.target ? ["--target", String(args.target)] : [])],
     workflowy_move: ["node:move", String(args.nodeId ?? ""), String(args.to ?? ""), ...(args.position ? ["--position", String(args.position)] : [])],
@@ -663,7 +734,7 @@ function buildToolInvocation(name: string, args: Record<string, unknown>): McpTo
     name,
     args,
     cmdArgs,
-    usesBatchStdin: name === "workflowy_batch" || name === "batch",
+    usesBatchStdin: name === "workflowy_batch" || name === "batch" || name === "edit_doc" || name === "workflowy_edit_doc",
   };
 }
 
@@ -739,7 +810,7 @@ async function executeToolInvocation(invocation: McpToolInvocation): Promise<Cli
       };
     }
 
-    stdin.write(JSON.stringify(invocation.args.ops ?? []));
+    stdin.write(JSON.stringify(invocation.args.ops ?? invocation.args.operations ?? []));
     stdin.end();
   }
 
@@ -1172,7 +1243,7 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
       result: {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "workflowy", version: "3.0.10" },
+        serverInfo: { name: "workflowy", version: "3.0.11" },
         instructions,
       },
     };

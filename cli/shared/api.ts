@@ -29,6 +29,10 @@ export interface WFTarget {
   key: string;
   type: "shortcut" | "system";
   name: string | null;
+  context?: string | null;
+  nodeId?: string | null;
+  path?: string | null;
+  kind?: "system" | "bookmark";
 }
 
 // --- LLM Doc types (tag-as-key format) ---

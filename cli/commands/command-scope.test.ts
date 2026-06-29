@@ -11,6 +11,7 @@ const testConfigDir = join(testHome, ".workflowy");
 let cacheModule: typeof import("../shared/cache.ts");
 let configModule: typeof import("../shared/config.ts");
 let dbModule: typeof import("../shared/db.ts");
+let doctorModule: typeof import("./doctor.ts");
 
 beforeAll(async () => {
   process.env.HOME = testHome;
@@ -18,10 +19,12 @@ beforeAll(async () => {
   configModule = await import("../shared/config.ts");
   cacheModule = await import("../shared/cache.ts");
   dbModule = await import("../shared/db.ts");
+  doctorModule = await import("./doctor.ts");
 });
 
 afterEach(() => {
   cacheModule.resetCacheDb();
+  dbModule.resetDb();
 
   const workflowyDir = join(testHome, ".workflowy");
   if (existsSync(workflowyDir)) {
@@ -31,6 +34,7 @@ afterEach(() => {
 
 afterAll(() => {
   cacheModule.resetCacheDb();
+  dbModule.resetDb();
 
   if (originalHome === undefined) {
     delete process.env.HOME;
@@ -129,6 +133,81 @@ test("bookmarks alias resolves to bookmark:list", async () => {
   expect(parsed.meta.command).toBe("bookmark:list");
   expect(parsed.bookmarks[0]?.name).toBe("home");
   expect(parsed.bookmarks[0]?.context).toBe("Primary inbox bookmark");
+});
+
+test("targets use bookmark node names and keep context separate", async () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: {
+      default: { name: "default", token: "token-default" },
+    },
+  });
+
+  cacheModule.replaceAllNodes([
+    { id: "root-1", name: "📥 Inbox", parent_id: null, modifiedAt: 100 },
+  ]);
+  dbModule.cacheTargets("default", [
+    { key: "inbox", label: "Inbox", nodeId: "root-1", type: "system" },
+  ]);
+  dbModule.saveBookmark("default", {
+    name: "inbox",
+    nodeId: "root-1",
+    context: "Top-level inbox — capture point for quick ideas.",
+  });
+
+  const result = await runCli(["targets", "--agent"]);
+  expect(result.exitCode).toBe(0);
+
+  const parsed = JSON.parse(result.stdout) as {
+    nodes: Array<{
+      id: string;
+      kind: string;
+      name: string;
+      context: string | null;
+      node_id: string | null;
+      path: string | null;
+    }>;
+  };
+  const inbox = parsed.nodes.find((node) => node.id === "inbox");
+  expect(inbox).toMatchObject({
+    id: "inbox",
+    kind: "bookmark",
+    name: "📥 Inbox",
+    context: "Top-level inbox — capture point for quick ideas.",
+    node_id: "root-1",
+    path: "📥 Inbox",
+  });
+});
+
+test("doctor treats missing optional LLM key as warning when core setup is ready", async () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: {
+      default: { name: "default", token: "token-default" },
+    },
+  });
+  cacheModule.replaceAllNodes([
+    { id: "root-1", name: "Inbox", parent_id: null, modifiedAt: 100 },
+  ]);
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch;
+
+  try {
+    const report = await doctorModule.collectDoctorReport();
+    const llmKeyCheck = report.checks.find((check) => check.label === "LLM API key");
+
+    expect(report.ready).toBe(true);
+    expect(report.healthy).toBe(true);
+    expect(llmKeyCheck).toMatchObject({
+      ok: true,
+      warn: true,
+      detail: "missing — set with `wf config:set llm.apiKey <key>`",
+    });
+    expect(report.suggested_actions).toEqual([]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("status and auth status both run doctor with structured readiness output", async () => {

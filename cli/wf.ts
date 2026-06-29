@@ -17,6 +17,7 @@ import { registerNodeTodos } from "./commands/todos.ts";
 import { registerNodeBulk } from "./commands/bulk.ts";
 import { registerNodeTemplate } from "./commands/template.ts";
 import { registerExport } from "./commands/export.ts";
+import { registerDocEdit } from "./commands/doc-edit.ts";
 
 // Search (top-level)
 import { registerSearch } from "./commands/search.ts";
@@ -101,6 +102,7 @@ function printColoredHelp(): void {
         ["node:bulk <op>",             "Bulk operations (complete|move|delete)"],
         ["node:template <action>",     "Save/apply node templates"],
         ["node:export <target>",       "Export a subtree (outline, JSON, markdown)"],
+        ["doc:edit <root>",            "Advanced structured edit operations"],
       ],
     },
     {
@@ -223,6 +225,7 @@ registerNodeTodos(program);
 registerNodeBulk(program);
 registerNodeTemplate(program);
 registerExport(program);
+registerDocEdit(program);
 
 // Search & browse (top-level)
 registerSearch(program);

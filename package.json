@@ -1,7 +1,16 @@
 {
   "name": "@workflowy/cli",
-  "version": "3.0.10",
+  "version": "3.0.11",
   "description": "WorkFlowy CLI — command-line interface for agents, automations, and power users",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rodolfo-terriquez/workflowy-cli.git"
+  },
+  "homepage": "https://github.com/rodolfo-terriquez/workflowy-cli#readme",
+  "bugs": {
+    "url": "https://github.com/rodolfo-terriquez/workflowy-cli/issues"
+  },
   "module": "cli/wf.ts",
   "type": "module",
   "bin": {

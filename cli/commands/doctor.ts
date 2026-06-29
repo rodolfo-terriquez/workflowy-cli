@@ -192,7 +192,7 @@ function buildSuggestedActions(report: Omit<DoctorReport, "suggested_actions">):
   return [...suggestions];
 }
 
-async function collectDoctorReport(): Promise<DoctorReport> {
+export async function collectDoctorReport(): Promise<DoctorReport> {
   const checks: CheckResult[] = [];
   checks.push({ label: "Binary version", ok: true, detail: VERSION });
 
@@ -239,8 +239,9 @@ async function collectDoctorReport(): Promise<DoctorReport> {
   });
   checks.push({
     label: "LLM API key",
-    ok: !!llmKey,
+    ok: true,
     detail: llmKey ? "present" : "missing — set with `wf config:set llm.apiKey <key>`",
+    warn: !llmKey,
   });
 
   const os = platform();
@@ -261,7 +262,7 @@ async function collectDoctorReport(): Promise<DoctorReport> {
   const completionsStatus = getShellCompletionsStatus();
   checks.push({ label: "Shell completions", ok: completionsStatus.ok, detail: completionsStatus.detail, warn: completionsStatus.warn });
 
-  const hasErrors = checks.some((c) => !c.ok);
+  const hasErrors = checks.some((c) => !c.ok && !c.warn);
   const reportBase = {
     meta: {
       command: "doctor" as const,
@@ -303,7 +304,7 @@ export async function runDoctor(): Promise<void> {
   } else {
     console.log(`\n  ${chalk.bold("wf doctor")} — checking your setup\n`);
     for (const c of report.checks) {
-      const icon = !c.ok ? chalk.red("✗") : c.warn ? chalk.yellow("⚠") : chalk.green("✓");
+      const icon = c.warn ? chalk.yellow("⚠") : !c.ok ? chalk.red("✗") : chalk.green("✓");
       console.log(`  ${icon} ${c.label}: ${c.detail}`);
     }
 

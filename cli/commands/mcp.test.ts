@@ -298,7 +298,7 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
     expect(response.jsonrpc).toBe("2.0");
     expect(response.id).toBe(1);
     expect(response.result.protocolVersion).toBe("2024-11-05");
-    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.0.10" });
+    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.0.11" });
     expect(response.result.capabilities).toEqual({ tools: {} });
     expect(response.result.instructions).toContain("## STOP — Read This First");
     expect(response.result.instructions).toContain("workflowy_targets");
@@ -462,6 +462,11 @@ test("tools/list explains that workflowy_batch add text is converted from markdo
     expect(batchTool).toBeDefined();
     expect(batchTool?.description).toContain("Markdown-style text is converted to Workflowy rich text");
     expect(batchTool?.inputSchema.properties?.ops?.description).toContain("Markdown-style formatting");
+
+    const editDocTool = response.result.tools.find((tool) => tool.name === "edit_doc");
+    expect(editDocTool).toBeDefined();
+    expect(editDocTool?.description).toContain("Advanced structured document edit");
+    expect(editDocTool?.inputSchema.properties?.operations?.description).toContain("structured edit operations");
   });
 });
 
@@ -545,6 +550,8 @@ test("tools/list includes short alias tools and status", async () => {
     expect(toolNames).toContain("update");
     expect(toolNames).toContain("context");
     expect(toolNames).toContain("batch");
+    expect(toolNames).toContain("edit_doc");
+    expect(toolNames).toContain("workflowy_edit_doc");
     expect(toolNames).toContain("bookmarks");
     expect(toolNames).toContain("sync");
     expect(toolNames).toContain("status");
