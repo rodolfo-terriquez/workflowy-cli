@@ -13,6 +13,7 @@ import { exitWithError } from "../shared/errors.ts";
 export function registerExport(program: Command): void {
   program
     .command("node:export <target>")
+    .alias("export")
     .description("Export a subtree to stdout")
     .option("--depth <n>", "Max depth", parseInt)
     .option(
@@ -55,7 +56,7 @@ export function registerExport(program: Command): void {
                   resolved_id: resolved.id,
                   timestamp: new Date().toISOString(),
                   account: config.activeAccount,
-                  wf_version: "3.0.12",
+                  wf_version: "3.1.0",
                 },
               node: {
                 id: node.id,

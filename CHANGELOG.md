@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.1.0 - 2026-06-30
+
+Polish release for the CLI recording demo and friendlier human/agent workflows.
+
+- Added short aliases for common node commands (`add`, `move`, `complete`, `update`, `delete`, `find`, `context`, `bulk`, `template`, and `export`).
+- Improved terminal outline rendering with distinct icons for leaf bullets, expanded parents, and collapsed parents with hidden children.
+- Updated the interactive `wf` welcome help to lead with the friendlier short command names.
+- Added tests for the outline icon rendering behavior.
+
 ## 3.0.12 - 2026-06-29
 
 Patch release for CLI demo and automation readiness.

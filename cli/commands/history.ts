@@ -27,7 +27,7 @@ export function registerHistory(program: Command): void {
             count: history.length,
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.0.12",
+            wf_version: "3.1.0",
           },
           entries: history,
         }, null, 2));

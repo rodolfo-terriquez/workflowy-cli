@@ -13,6 +13,7 @@ import { exitWithError } from "../shared/errors.ts";
 export function registerNodeDelete(program: Command): void {
   program
     .command("node:delete <nodeIdOrPath>")
+    .alias("delete")
     .description("Delete a node")
     .option("--format <type>", "Output format (outline|json)")
     .option("--yes", "Skip confirmation prompt")

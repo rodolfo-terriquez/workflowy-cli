@@ -14,6 +14,7 @@ import { exitWithError } from "../shared/errors.ts";
 export function registerNodeAdd(program: Command): void {
   program
     .command("node:add <target> <text>")
+    .alias("add")
     .description("Add a child node to a target")
     .option("--type <type>", "Node layout (bullet|todo|h1|h2|h3)", "bullet")
     .option("--note <note>", "Note content for the node")

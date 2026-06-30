@@ -2,6 +2,9 @@ import chalk from "chalk";
 import type { FlatNode } from "../shared/nodes.ts";
 
 function getBullet(node: FlatNode): { bullet: string; text: string } {
+  const hasVisibleChildren = node.children.length > 0;
+  const hasHiddenChildren = node.hasMore;
+
   switch (node.type) {
     case "todo":
       if (node.completed) {
@@ -20,7 +23,7 @@ function getBullet(node: FlatNode): { bullet: string; text: string } {
       return { bullet: chalk.dim("│"), text: chalk.italic(node.name) };
     default:
       return {
-        bullet: chalk.dim("•"),
+        bullet: chalk.dim(hasVisibleChildren ? "▾" : hasHiddenChildren ? "▸" : "•"),
         text: node.completed ? chalk.strikethrough(chalk.dim(node.name)) : node.name,
       };
   }

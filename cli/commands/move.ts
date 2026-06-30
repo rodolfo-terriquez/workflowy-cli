@@ -13,6 +13,7 @@ import { exitWithError } from "../shared/errors.ts";
 export function registerNodeMove(program: Command): void {
   program
     .command("node:move <nodeId> <target>")
+    .alias("move")
     .description("Move a node to a different parent")
     .option("--position <pos>", "Position: top or bottom", "top")
     .option("--format <type>", "Output format (outline|json)")

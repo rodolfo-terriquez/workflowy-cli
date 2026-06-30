@@ -275,7 +275,7 @@ export function registerDocEdit(program: Command): void {
             operation_count: operations.length,
             operation_types: Array.from(new Set(operations.map((op) => op.op))),
             timestamp: new Date().toISOString(),
-            wf_version: "3.0.12",
+            wf_version: "3.1.0",
           },
           success: true,
           message: `Applied ${operations.length} operation${operations.length === 1 ? "" : "s"} to ${resolvedRoot}`,

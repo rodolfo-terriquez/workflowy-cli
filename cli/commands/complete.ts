@@ -12,6 +12,7 @@ import { exitWithError } from "../shared/errors.ts";
 export function registerNodeComplete(program: Command): void {
   program
     .command("node:complete <nodeIdOrPath>")
+    .alias("complete")
     .description("Mark a todo as complete")
     .option("--undo", "Uncheck the todo")
     .option("--format <type>", "Output format (outline|json)")

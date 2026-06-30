@@ -89,7 +89,7 @@ async function executeBulk(
 
   if (nodes.length === 0) {
     if (isAgentMode()) {
-      console.log(JSON.stringify({ meta: { command: `node:bulk ${operation}`, wf_version: "3.0.12" }, message: "No matching nodes." }, null, 2));
+      console.log(JSON.stringify({ meta: { command: `node:bulk ${operation}`, wf_version: "3.1.0" }, message: "No matching nodes." }, null, 2));
     } else {
       console.log(chalk.dim("\n  No matching nodes.\n"));
     }
@@ -101,7 +101,7 @@ async function executeBulk(
   if (opts.dryRun) {
     if (useJson) {
       console.log(JSON.stringify({
-        meta: { command: `node:bulk ${operation}`, dry_run: true, wf_version: "3.0.12" },
+        meta: { command: `node:bulk ${operation}`, dry_run: true, wf_version: "3.1.0" },
         would_affect: nodes.length,
         nodes: nodes.slice(0, 50).map((n) => ({ id: n.id, name: cleanHtml(n.name), operation })),
       }, null, 2));
@@ -144,7 +144,7 @@ async function executeBulk(
   if (useJson) {
     const config = loadConfig();
     console.log(JSON.stringify({
-      meta: { command: `node:bulk ${operation}`, timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.0.12" },
+      meta: { command: `node:bulk ${operation}`, timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.0" },
       message: `${operation}: ${totalOps} nodes affected`,
       total: totalOps,
       api_calls: grouped.size,
@@ -162,6 +162,7 @@ async function executeBulk(
 export function registerNodeBulk(program: Command): void {
   const bulk = program
     .command("node:bulk")
+    .alias("bulk")
     .description("Bulk operations with filters (complete|delete|move)");
 
   addBulkFlags(

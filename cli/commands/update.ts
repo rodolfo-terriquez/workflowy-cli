@@ -12,6 +12,7 @@ import { exitWithError } from "../shared/errors.ts";
 export function registerNodeUpdate(program: Command): void {
   program
     .command("node:update <nodeIdOrPath>")
+    .alias("update")
     .description("Rename a node or edit its note")
     .option("--text <text>", "Replace the node text")
     .option("--note <note>", "Replace the node note")

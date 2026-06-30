@@ -39,6 +39,7 @@ function resolveTargetToCache(target: string): CachedNode | null {
 export function registerNodeContext(program: Command): void {
   program
     .command("node:context <target>")
+    .alias("context")
     .description("Show a node with its ancestors, siblings, and children")
     .option("--format <type>", "Output format (outline|json)")
     .option("--copy", "Copy output to clipboard")
@@ -83,7 +84,7 @@ export function registerNodeContext(program: Command): void {
             target,
             resolved_id: node.id,
             timestamp: new Date().toISOString(),
-            wf_version: "3.0.12",
+            wf_version: "3.1.0",
           },
           node: {
             id: node.id,
