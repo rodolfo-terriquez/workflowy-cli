@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.1.2 - 2026-06-30
+
+Patch release for command-line polish.
+
+- Clarified `--live` help text as bypassing the local cache and fetching/searching through the WorkFlowy API.
+- Changed interactive welcome wording from “Global Options” to “Common Options” so command-specific flags are not misleading.
+- Added short aliases to generated shell completions.
+- Improved interactive autocomplete so saved bookmarks like `@demo` and `@youtube` are offered dynamically.
+
 ## 3.1.1 - 2026-06-30
 
 Patch release for interactive shell polish.

@@ -18,7 +18,7 @@ export function registerSearch(program: Command): void {
     .description("Search nodes by text content")
     .option("--tag <tag>", "Filter by tag")
     .option("--format <type>", "Output format (outline|json|tsv|csv)")
-    .option("--live", "Force API search (bypass cache FTS)")
+    .option("--live", "Bypass local FTS cache and search through the WorkFlowy API")
     .option("--limit <n>", "Max results", parseInt)
     .option("--smart", "Enable AI-powered semantic reranking (tier 3)")
     .option("--target <target>", "Scope search to a subtree")
@@ -177,7 +177,7 @@ function outputResults(
           cache_age_seconds: cacheAge,
           cache_stale: isCacheStale(),
           smart_search_available: !!config.llm?.apiKey,
-          wf_version: "3.1.1",
+          wf_version: "3.1.2",
         },
         nodes: results.map((r) => ({
           id: r.id,

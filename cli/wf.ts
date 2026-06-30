@@ -184,11 +184,11 @@ function printColoredHelp(): void {
     console.log("");
   }
 
-  console.log(`  ${w("Global Options")}`);
+  console.log(`  ${w("Common Options")}`);
   console.log(`    ${c("--agent".padEnd(28))} ${dim("JSON output, no colors")}`);
-  console.log(`    ${c("--live".padEnd(28))} ${dim("Bypass cache, hit API directly")}`);
+  console.log(`    ${c("--live".padEnd(28))} ${dim("Bypass local cache on commands that support it")}`);
   console.log(`    ${c("--copy".padEnd(28))} ${dim("Copy output to clipboard")}`);
-  console.log(`    ${c("--format json|tsv|csv".padEnd(28))} ${dim("Output format")}`);
+  console.log(`    ${c("--format json|tsv|csv".padEnd(28))} ${dim("Structured output where supported")}`);
   console.log(`    ${c("-v, --version".padEnd(28))} ${dim("Show version number")}`);
   console.log(`    ${c("-h, --help".padEnd(28))} ${dim("Show help for any command")}`);
   console.log("");

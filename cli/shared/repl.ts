@@ -2,9 +2,10 @@ import * as readline from "node:readline";
 import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import chalk from "chalk";
-import { getConfigDir } from "./config.ts";
+import { getConfigDir, loadConfig } from "./config.ts";
 import { getCacheDb, getCacheNodeCount } from "./cache.ts";
 import { expandAlias } from "./alias.ts";
+import { getCachedTargets, listBookmarks } from "./db.ts";
 
 const HISTORY_PATH = join(getConfigDir(), "history");
 const MAX_HISTORY = 500;
@@ -29,8 +30,8 @@ const ALL_COMMANDS = [
 
 const FORMAT_OPTIONS = ["json", "outline", "tsv", "csv"];
 
-const TARGET_SLUGS = [
-  "@inbox", "@today", "@tomorrow", "@calendar", "@next-week",
+const FALLBACK_TARGET_SLUGS = [
+  "@inbox", "@today", "@tomorrow", "@calendar", "@next_week",
 ];
 
 function loadHistory(): string[] {
@@ -54,6 +55,17 @@ function trimHistoryFile(): void {
   const lines = loadHistory();
   if (lines.length > MAX_HISTORY) {
     writeFileSync(HISTORY_PATH, lines.slice(-MAX_HISTORY).join("\n") + "\n");
+  }
+}
+
+function getTargetSlugs(): string[] {
+  try {
+    const account = loadConfig().activeAccount;
+    const targets = getCachedTargets(account)?.map((target) => `@${target.key}`) ?? [];
+    const bookmarks = listBookmarks(account).map((bookmark) => `@${bookmark.name}`);
+    return [...new Set([...FALLBACK_TARGET_SLUGS, ...targets, ...bookmarks])].sort();
+  } catch {
+    return FALLBACK_TARGET_SLUGS;
   }
 }
 
@@ -127,7 +139,8 @@ function completer(line: string): [string[], string] {
 
   // After --to or as a target argument, complete @targets + top-level node names
   if (lastPart.startsWith("@")) {
-    const matches = TARGET_SLUGS.filter((t) => t.startsWith(lastPart));
+    const targets = getTargetSlugs();
+    const matches = targets.filter((t) => t.startsWith(lastPart));
     return [matches, lastPart];
   }
 
@@ -135,15 +148,16 @@ function completer(line: string): [string[], string] {
   const cmd = parts[0]!;
   const targetCommands = ["read", "add", "find", "context", "move", "export", "node:read", "node:add", "node:find", "node:context", "node:move", "node:export"];
   if (targetCommands.includes(cmd) && parts.length === 2) {
-    const allTargets = [...TARGET_SLUGS, ...getCachedNodeNames(20)];
+    const allTargets = [...getTargetSlugs(), ...getCachedNodeNames(20)];
     const matches = allTargets.filter((t) => t.toLowerCase().startsWith(lastPart.toLowerCase()));
     return [matches.length > 0 ? matches : allTargets.slice(0, 10), lastPart];
   }
 
   // After --to, offer targets
   if (prevPart === "--to") {
-    const matches = TARGET_SLUGS.filter((t) => t.startsWith(lastPart));
-    return [matches.length > 0 ? matches : TARGET_SLUGS, lastPart];
+    const targets = getTargetSlugs();
+    const matches = targets.filter((t) => t.startsWith(lastPart));
+    return [matches.length > 0 ? matches : targets, lastPart];
   }
 
   // Flag completions

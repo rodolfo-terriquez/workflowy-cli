@@ -29,7 +29,7 @@ export function registerNodeRead(program: Command): void {
     .description("Read a node and its children")
     .option("--depth <n>", "Max depth to read", parseInt)
     .option("--format <type>", "Output format (outline|json)")
-    .option("--live", "Force live API call (bypass cache)")
+    .option("--live", "Bypass local cache and fetch directly from the WorkFlowy API")
     .option("--include-path", "Include breadcrumb path in JSON output")
     .option("--copy", "Copy output to clipboard")
     .action(
@@ -100,7 +100,7 @@ async function readLive(
       timestamp: new Date().toISOString(),
       account: config.activeAccount,
       source: "live",
-      wf_version: "3.1.1",
+      wf_version: "3.1.2",
     };
 
     const output: Record<string, unknown> = {
@@ -239,7 +239,7 @@ function readFromCache(
       source: "cache",
       cache_age_seconds: cacheAge,
       cache_stale: stale,
-      wf_version: "3.1.1",
+      wf_version: "3.1.2",
     };
 
     const output: Record<string, unknown> = {

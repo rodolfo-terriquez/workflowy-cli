@@ -7,11 +7,12 @@ import { getConfigDir } from "../shared/config.ts";
 import { isAgentMode } from "../agent.ts";
 
 const COMMANDS = [
+  "read", "add", "move", "complete", "update", "delete", "find", "context", "todos", "bulk", "template", "export",
   "node:read", "node:add", "node:move", "node:complete", "node:update", "node:delete",
-  "node:find", "node:context", "node:todos", "todos", "node:template", "node:export",
+  "node:find", "node:context", "node:todos", "node:template", "node:export",
   "node:bulk complete", "node:bulk delete", "node:bulk move",
-  "search", "tags", "targets", "bookmark:list", "bookmark:save", "history",
-  "cache:sync", "cache:diff",
+  "search", "tags", "targets", "bookmark:list", "bookmark:save", "bookmarks", "history",
+  "sync", "cache:sync", "cache:diff",
   "ai:propose", "ai:preview", "ai:apply", "ai:reject", "ai:list",
   "batch",
   "config:set", "config:get", "config:alias",
@@ -19,7 +20,7 @@ const COMMANDS = [
   "watch:start", "watch:stop", "watch:status",
   "webhook:create", "webhook:list", "webhook:delete", "webhook:test",
   "workflow:run", "workflow:list", "workflow:create",
-  "mcp", "doctor", "completions", "login", "self:update",
+  "mcp", "doctor", "status", "completions", "login", "self:update",
 ];
 
 function generateZshCompletion(): string {
@@ -35,8 +36,8 @@ _wf() {
       ;;
     args)
       case $words[1] in
-        node:read|node:find|node:context|node:todos|todos)
-          _arguments '--format[Output format]:format:(json outline tsv csv)' '--copy[Copy to clipboard]' '--live[Bypass cache]'
+        read|find|context|todos|node:read|node:find|node:context|node:todos)
+          _arguments '--format[Output format]:format:(json outline tsv csv)' '--copy[Copy to clipboard]' '--live[Bypass local cache when supported]'
           ;;
         search)
           _arguments '--format[Output format]:format:(json outline tsv csv)' '--smart[AI rerank]' '--copy[Copy to clipboard]' '--live[Bypass cache]'
@@ -136,7 +137,7 @@ export function registerCompletions(program: Command): void {
       writeFileSync(join(getConfigDir(), "completions-installed"), shell, "utf-8");
 
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "completions install", wf_version: "3.1.1" }, shell, path: targetPath }));
+        console.log(JSON.stringify({ meta: { command: "completions install", wf_version: "3.1.2" }, shell, path: targetPath }));
       } else {
         console.log(`\n  ${chalk.green("✓")} Installed ${shell} completions at ${chalk.dim(targetPath)}`);
         console.log(`  Restart your shell or run ${chalk.cyan("source " + targetPath)} to activate.\n`);
