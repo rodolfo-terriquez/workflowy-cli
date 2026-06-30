@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.3 - 2026-06-30
+
+Patch release for AI command feedback.
+
+- Added an animated elapsed-time progress indicator while `wf ai:propose` waits for the LLM.
+- Kept progress output disabled in JSON/agent mode so structured output stays parseable.
+
 ## 3.1.2 - 2026-06-30
 
 Patch release for command-line polish.

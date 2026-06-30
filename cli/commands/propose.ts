@@ -11,6 +11,7 @@ import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 
 const PROPOSALS_DIR = join(getConfigDir(), "proposals");
+const PROGRESS_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 function ensureProposalsDir(): void {
   if (!existsSync(PROPOSALS_DIR)) {
@@ -68,19 +69,21 @@ export function registerAiCommands(program: Command): void {
       const config = loadConfig();
       const useJson = opts.format === "json" || isAgentMode();
 
-      if (!useJson) process.stdout.write(chalk.dim("  Generating proposal..."));
+      const progress = useJson ? null : startProgress("Generating proposal");
 
       let result: { summary: string; operations: ProposalOperation[] };
       try {
         result = await generateProposal(instructions, opts.model);
       } catch (err) {
-        if (!useJson) process.stdout.write("\r");
+        progress?.stop();
         exitWithError(
           "llm_error",
           err instanceof Error ? err.message : String(err),
           "Check your LLM API key with `wf config:get llm.apiKey`"
         );
       }
+
+      progress?.stop();
 
       const proposalId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
 
@@ -100,7 +103,7 @@ export function registerAiCommands(program: Command): void {
             command: "ai:propose",
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.1.2",
+            wf_version: "3.1.3",
           },
           proposal: {
             id: proposalId,
@@ -110,7 +113,6 @@ export function registerAiCommands(program: Command): void {
           },
         }, null, 2));
       } else {
-        process.stdout.write("\r");
         console.log(`  ${chalk.cyan("Proposal")} ${chalk.dim(proposalId)} — "${instructions}"\n`);
         console.log(`  ${chalk.bold(result.summary)}\n`);
         console.log(`  Changes (${result.operations.length} operation${result.operations.length !== 1 ? "s" : ""}):\n`);
@@ -149,7 +151,7 @@ export function registerAiCommands(program: Command): void {
 
       if (useJson) {
         console.log(JSON.stringify({
-          meta: { command: "ai:preview", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.2" },
+          meta: { command: "ai:preview", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.3" },
           proposal: {
             id: proposal.id,
             summary: proposal.summary,
@@ -232,7 +234,7 @@ export function registerAiCommands(program: Command): void {
             command: "ai:apply",
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.1.2",
+            wf_version: "3.1.3",
           };
           const cacheAge = getCacheAgeSeconds();
           if (cacheAge !== null) {
@@ -271,7 +273,7 @@ export function registerAiCommands(program: Command): void {
 
         if (isAgentMode()) {
           console.log(JSON.stringify({
-            meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.2" },
+            meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.3" },
             message: `Rejected ${all.length} proposals.`,
           }, null, 2));
         } else {
@@ -297,13 +299,35 @@ export function registerAiCommands(program: Command): void {
 
       if (useJson) {
         console.log(JSON.stringify({
-          meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.2" },
+          meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.3" },
           message: `Proposal ${proposal.id} rejected.`,
         }, null, 2));
       } else {
         console.log(`\n  ${chalk.red("✗")} Proposal ${chalk.dim(proposal.id)} rejected.\n`);
       }
     });
+}
+
+function startProgress(label: string): { stop: () => void } {
+  const startedAt = Date.now();
+  let frame = 0;
+
+  const render = () => {
+    const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
+    const icon = PROGRESS_FRAMES[frame % PROGRESS_FRAMES.length]!;
+    frame++;
+    process.stdout.write(`\r  ${chalk.cyan(icon)} ${chalk.dim(`${label} ${elapsedSeconds}s`)}`);
+  };
+
+  render();
+  const timer = setInterval(render, 120);
+
+  return {
+    stop: () => {
+      clearInterval(timer);
+      process.stdout.write(`\r${" ".repeat(80)}\r`);
+    },
+  };
 }
 
 function formatOpDescription(op: ProposalOperation): string {

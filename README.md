@@ -18,7 +18,7 @@ This project is WorkFlowy-native:
 
 ## Status
 
-Current version: `3.1.2`
+Current version: `3.1.3`
 
 Implemented today:
 
@@ -465,7 +465,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:read",
-    "wf_version": "3.1.2"
+    "wf_version": "3.1.3"
   },
   "node": {},
   "children": []
@@ -478,7 +478,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "search",
-    "wf_version": "3.1.2"
+    "wf_version": "3.1.3"
   },
   "nodes": []
 }
@@ -490,7 +490,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:add",
-    "wf_version": "3.1.2"
+    "wf_version": "3.1.3"
   },
   "message": "..."
 }
