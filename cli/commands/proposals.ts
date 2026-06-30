@@ -35,7 +35,7 @@ export function registerProposalsList(program: Command): void {
 
       if (useJson) {
         console.log(JSON.stringify({
-          meta: { command: "ai:list", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.3" },
+          meta: { command: "ai:list", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.4" },
           proposals: proposals.map((p) => ({
             id: p.id,
             summary: p.summary,

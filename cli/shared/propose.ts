@@ -1,6 +1,7 @@
 import { loadConfig, type LlmConfig } from "./config.ts";
-import { getCacheDb, getNodeById, getChildren, buildBreadcrumbDisplay, getCacheNodeCount } from "./cache.ts";
+import { getCacheDb, getNodeById, getChildren, buildBreadcrumbDisplay, getCacheNodeCount, type CachedNode } from "./cache.ts";
 import { cleanHtml, type FlatNode } from "./nodes.ts";
+import { resolveSavedTargetNodeId, resolveTarget } from "../targets.ts";
 
 export interface ProposalOperation {
   op: "move" | "complete" | "uncomplete" | "insert" | "update" | "delete";
@@ -157,20 +158,42 @@ function gatherContext(instruction: string): string {
   }
 
   const lines: string[] = [];
-  const db = getCacheDb();
 
   for (const rootName of relevantRoots) {
-    const rows = db.query("SELECT * FROM nodes WHERE LOWER(name) LIKE ? LIMIT 1")
-      .all(`%${rootName}%`) as Array<{ id: string; name: string }>;
+    const rootNode = resolveContextRoot(rootName);
+    if (!rootNode) continue;
 
-    if (rows.length === 0) continue;
-
-    const rootNode = rows[0]!;
     lines.push(`\n## ${cleanHtml(rootNode.name)} (${rootNode.id})`);
     appendChildren(rootNode.id, lines, 1, 3);
   }
 
   return lines.join("\n");
+}
+
+function resolveContextRoot(rootName: string): Pick<CachedNode, "id" | "name"> | null {
+  const normalized = rootName.toLowerCase().replace(/^@+/, "").replace(/-/g, "_");
+
+  try {
+    const resolved = resolveTarget(`@${normalized}`);
+    const savedNodeId = resolveSavedTargetNodeId(resolved.id);
+    const targetNode = savedNodeId ? getNodeById(savedNodeId) : getNodeById(resolved.id);
+    if (targetNode) return targetNode;
+  } catch {
+    // Fall back to name search below.
+  }
+
+  const directNode = getNodeById(rootName);
+  if (directNode) return directNode;
+
+  const db = getCacheDb();
+  const candidates = [normalized, normalized.replace(/_/g, " ")];
+  for (const candidate of candidates) {
+    const rows = db.query("SELECT id, name FROM nodes WHERE LOWER(name) LIKE ? LIMIT 1")
+      .all(`%${candidate}%`) as Array<{ id: string; name: string }>;
+    if (rows.length > 0) return rows[0]!;
+  }
+
+  return null;
 }
 
 function appendChildren(parentId: string, lines: string[], depth: number, maxDepth: number): void {

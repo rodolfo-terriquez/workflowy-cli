@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.4 - 2026-06-30
+
+Patch release for AI proposal context.
+
+- Fixed `wf ai:propose` context gathering so saved `@target` bookmarks like `@raw_notes` resolve to their actual nodes instead of relying on fuzzy name search.
+- Improved AI proposal quality for demo and agent workflows that reference bookmarked subtrees.
+
 ## 3.1.3 - 2026-06-30
 
 Patch release for AI command feedback.
