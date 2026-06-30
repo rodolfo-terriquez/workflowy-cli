@@ -66,14 +66,15 @@ export function registerAiCommands(program: Command): void {
     .action(async (instructions: string, opts: { format?: string; model?: string }) => {
       requireToken();
       const config = loadConfig();
+      const useJson = opts.format === "json" || isAgentMode();
 
-      if (!isAgentMode()) process.stdout.write(chalk.dim("  Generating proposal..."));
+      if (!useJson) process.stdout.write(chalk.dim("  Generating proposal..."));
 
       let result: { summary: string; operations: ProposalOperation[] };
       try {
         result = await generateProposal(instructions, opts.model);
       } catch (err) {
-        if (!isAgentMode()) process.stdout.write("\r");
+        if (!useJson) process.stdout.write("\r");
         exitWithError(
           "llm_error",
           err instanceof Error ? err.message : String(err),
@@ -93,15 +94,13 @@ export function registerAiCommands(program: Command): void {
 
       saveProposalFile(proposal);
 
-      const useJson = opts.format === "json" || isAgentMode();
-
       if (useJson) {
         console.log(JSON.stringify({
           meta: {
             command: "ai:propose",
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.0.11",
+            wf_version: "3.0.12",
           },
           proposal: {
             id: proposalId,
@@ -150,7 +149,7 @@ export function registerAiCommands(program: Command): void {
 
       if (useJson) {
         console.log(JSON.stringify({
-          meta: { command: "ai:preview", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.0.11" },
+          meta: { command: "ai:preview", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.0.12" },
           proposal: {
             id: proposal.id,
             summary: proposal.summary,
@@ -233,7 +232,7 @@ export function registerAiCommands(program: Command): void {
             command: "ai:apply",
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.0.11",
+            wf_version: "3.0.12",
           };
           const cacheAge = getCacheAgeSeconds();
           if (cacheAge !== null) {
@@ -272,7 +271,7 @@ export function registerAiCommands(program: Command): void {
 
         if (isAgentMode()) {
           console.log(JSON.stringify({
-            meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.0.11" },
+            meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.0.12" },
             message: `Rejected ${all.length} proposals.`,
           }, null, 2));
         } else {
@@ -298,7 +297,7 @@ export function registerAiCommands(program: Command): void {
 
       if (useJson) {
         console.log(JSON.stringify({
-          meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.0.11" },
+          meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.0.12" },
           message: `Proposal ${proposal.id} rejected.`,
         }, null, 2));
       } else {

@@ -55,7 +55,7 @@ function scoreCandidate(row: SearchResult, terms: string[]): number {
   return score;
 }
 
-function trigramSearch(query: string, limit = 20): SmartSearchResult[] {
+function trigramSearch(query: string, limit = 20, scopeIds?: Set<string>): SmartSearchResult[] {
   const terms = getSearchTerms(query);
   const trigramTerms = [...new Set(terms.flatMap((term) => getTrigrams(term)))];
   if (trigramTerms.length === 0) return [];
@@ -64,7 +64,7 @@ function trigramSearch(query: string, limit = 20): SmartSearchResult[] {
     .map((term) => `"${term.replace(/"/g, '""')}"`)
     .join(" OR ");
 
-  const candidates = searchNodesByTrigram(matchQuery, limit * 5)
+  const candidates = searchNodesByTrigram(matchQuery, limit * 5, scopeIds)
     .map((row) => ({
       row,
       score: scoreCandidate(row, terms),
@@ -83,7 +83,7 @@ function trigramSearch(query: string, limit = 20): SmartSearchResult[] {
   }));
 }
 
-function likeSearch(query: string, limit = 20): SmartSearchResult[] {
+function likeSearch(query: string, limit = 20, scopeIds?: Set<string>): SmartSearchResult[] {
   const db = getCacheDb();
   const terms = getSearchTerms(query);
   if (terms.length === 0) return [];
@@ -113,12 +113,19 @@ function likeSearch(query: string, limit = 20): SmartSearchResult[] {
     });
   });
 
+  const scopeIdsArray = scopeIds ? [...scopeIds] : [];
+  const scopeClause = scopeIds
+    ? scopeIdsArray.length === 0
+      ? " AND 0"
+      : ` AND id IN (${scopeIdsArray.map(() => "?").join(", ")})`
+    : "";
+
   const rows = db.query(`
     SELECT * FROM nodes
-    WHERE ${likeConditions}
+    WHERE ${likeConditions}${scopeClause}
     ORDER BY modified_at DESC
     LIMIT ?
-  `).all(...params, limit) as Array<SearchResult>;
+  `).all(...params, ...scopeIdsArray, limit) as Array<SearchResult>;
 
   return rows.map((row) => ({
     ...row,
@@ -128,10 +135,10 @@ function likeSearch(query: string, limit = 20): SmartSearchResult[] {
   }));
 }
 
-export function fuzzySearch(query: string, limit = 20): SmartSearchResult[] {
+export function fuzzySearch(query: string, limit = 20, scopeIds?: Set<string>): SmartSearchResult[] {
   const ranked = new Map<string, SmartSearchResult>();
 
-  for (const candidate of [...trigramSearch(query, limit), ...likeSearch(query, limit)]) {
+  for (const candidate of [...trigramSearch(query, limit, scopeIds), ...likeSearch(query, limit, scopeIds)]) {
     const existing = ranked.get(candidate.id);
     if (!existing || candidate.rank > existing.rank) {
       ranked.set(candidate.id, candidate);
@@ -146,29 +153,30 @@ export function fuzzySearch(query: string, limit = 20): SmartSearchResult[] {
     .slice(0, limit);
 }
 
-function scopeResultsToTarget(results: SmartSearchResult[], target?: string): SmartSearchResult[] {
-  if (!target) return results;
+function getTargetScopeIds(target?: string): Set<string> | undefined {
+  if (!target) return undefined;
 
   const resolved = resolveCacheTargetReference(target);
-  if (!resolved) return [];
+  if (!resolved) return new Set();
 
-  const subtreeIds = getSubtreeIds(resolved.id);
-  return results.filter((result) => subtreeIds.has(result.id));
+  return getSubtreeIds(resolved.id);
 }
 
 export function tieredSearch(query: string, limit = 20, target?: string): SmartSearchResult[] {
+  const scopeIds = getTargetScopeIds(target);
+
   // Tier 1: FTS
-  const ftsResults = searchNodes(query, limit);
-  const results: SmartSearchResult[] = scopeResultsToTarget(ftsResults.map((r) => ({
+  const ftsResults = searchNodes(query, limit, scopeIds);
+  const results: SmartSearchResult[] = ftsResults.map((r) => ({
     ...r,
     match_type: "fts" as const,
-  })), target);
+  }));
 
   if (results.length >= 3) return results.slice(0, limit);
 
   // Tier 2: Fuzzy fallback
   const ftsIds = new Set(results.map((r) => r.id));
-  const fuzzyResults = scopeResultsToTarget(fuzzySearch(query, limit * 5), target);
+  const fuzzyResults = fuzzySearch(query, limit * 5, scopeIds);
   for (const r of fuzzyResults) {
     if (!ftsIds.has(r.id)) {
       results.push(r);

@@ -343,7 +343,7 @@ export function registerBatch(program: Command): void {
       }
 
       console.log(JSON.stringify({
-        meta: { command: "batch", timestamp: new Date().toISOString(), wf_version: "3.0.11" },
+        meta: { command: "batch", timestamp: new Date().toISOString(), wf_version: "3.0.12" },
         success: !hadFailures,
         results,
         total_operations: ops.length,

@@ -276,6 +276,11 @@ test("node:todos only returns actual todo nodes", async () => {
 
   const parsed = JSON.parse(result.stdout) as { nodes: Array<{ id: string; name: string }> };
   expect(parsed.nodes.map((node) => node.id)).toEqual(["todo-1"]);
+
+  const aliasResult = await runCli(["todos", "--format", "json"]);
+  expect(aliasResult.exitCode).toBe(0);
+  const aliasParsed = JSON.parse(aliasResult.stdout) as { nodes: Array<{ id: string; name: string }> };
+  expect(aliasParsed.nodes.map((node) => node.id)).toEqual(["todo-1"]);
 });
 
 test("search --target scopes cache search to the requested subtree", async () => {
@@ -301,6 +306,54 @@ test("search --target scopes cache search to the requested subtree", async () =>
 
   const parsed = JSON.parse(result.stdout) as { nodes: Array<{ id: string; name: string }> };
   expect(parsed.nodes.map((node) => node.id)).toEqual(["launch-plan"]);
+});
+
+test("search --target resolves full saved target IDs to cached short IDs", async () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: {
+      default: { name: "default", token: "token-default" },
+    },
+  });
+
+  cacheModule.replaceAllNodes([
+    { id: "111111111111", name: "Inbox", parent_id: null, modifiedAt: 100 },
+    { id: "222222222222", name: "Projects", parent_id: "111111111111", modifiedAt: 101 },
+    { id: "333333333333", name: "Scoped video note", parent_id: "222222222222", modifiedAt: 102 },
+    { id: "444444444444", name: "Unscoped video note", parent_id: null, modifiedAt: 103 },
+  ]);
+  cacheModule.setTargetUuid("inbox", "aaaaaaaa-bbbb-cccc-dddd-111111111111");
+
+  const result = await runCli(["search", "video", "--format", "json", "--target", "@inbox/Projects"]);
+  expect(result.exitCode).toBe(0);
+
+  const parsed = JSON.parse(result.stdout) as { nodes: Array<{ id: string; name: string }> };
+  expect(parsed.nodes.map((node) => node.id)).toEqual(["333333333333"]);
+});
+
+test("search --target applies scope before limiting global results", async () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: {
+      default: { name: "default", token: "token-default" },
+    },
+  });
+
+  cacheModule.replaceAllNodes([
+    { id: "root-today", name: "Today", parent_id: null, modifiedAt: 100 },
+    { id: "outside-match", name: "Needle outside target", parent_id: "root-today", modifiedAt: 101 },
+    { id: "root-inbox", name: "Inbox", parent_id: null, modifiedAt: 102 },
+    { id: "projects", name: "Projects", parent_id: "root-inbox", modifiedAt: 103 },
+    { id: "inside-match", name: "Needle inside target", parent_id: "projects", modifiedAt: 104 },
+  ]);
+  cacheModule.setTargetUuid("inbox", "root-inbox");
+  cacheModule.setTargetUuid("today", "root-today");
+
+  const result = await runCli(["search", "needle", "--format", "json", "--target", "@inbox/Projects", "--limit", "1"]);
+  expect(result.exitCode).toBe(0);
+
+  const parsed = JSON.parse(result.stdout) as { nodes: Array<{ id: string; name: string }> };
+  expect(parsed.nodes.map((node) => node.id)).toEqual(["inside-match"]);
 });
 
 test("node:delete requires --yes in non-interactive mode", async () => {

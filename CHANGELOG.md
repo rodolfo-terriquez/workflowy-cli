@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.12 - 2026-06-29
+
+Patch release for CLI demo and automation readiness.
+
+- Fixed `wf ai:propose --format json` so progress text no longer breaks parseable JSON output.
+- Fixed scoped cache search so `wf search --target ...` applies the subtree filter before limiting results.
+- Added `wf todos` as a top-level alias for `wf node:todos`.
+- Improved `wf node:add --format json` to verify inserts and include `created_node_id` when available.
+
 ## 3.0.11 - 2026-06-29
 
 Initial public release candidate for the WorkFlowy Agent Toolkit.

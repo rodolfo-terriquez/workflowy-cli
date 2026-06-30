@@ -159,10 +159,19 @@ export function getNodeById(id: string): CachedNode | null {
   const row = db.query("SELECT * FROM nodes WHERE id = ?").get(id) as CachedNode | null;
   if (row) return row;
 
+  // WorkFlowy APIs may return full UUID-like IDs whose last segment is the
+  // 12-hex tag stored in older/local cache rows.
+  const lastSegment = id.includes("-") ? id.split("-").pop() : null;
+  if (lastSegment && /^[0-9a-f]{8,12}$/i.test(lastSegment)) {
+    const tagMatches = db.query("SELECT * FROM nodes WHERE id = ? OR id LIKE ? LIMIT 2")
+      .all(lastSegment, `%-${lastSegment}`) as CachedNode[];
+    if (tagMatches.length === 1) return tagMatches[0] ?? null;
+  }
+
   // 12-hex tags from the LLM doc API are the last segment of v1 UUIDs
   if (/^[0-9a-f]{8,12}$/i.test(id)) {
-    const tagMatches = db.query("SELECT * FROM nodes WHERE id LIKE ? LIMIT 2")
-      .all(`%-${id}`) as CachedNode[];
+    const tagMatches = db.query("SELECT * FROM nodes WHERE id = ? OR id LIKE ? LIMIT 2")
+      .all(id, `%-${id}`) as CachedNode[];
     if (tagMatches.length === 1) return tagMatches[0] ?? null;
   }
 
@@ -229,7 +238,8 @@ export function getSubtreeIds(rootId: string): Set<string> {
 
   const db = getCacheDb();
   const ids = new Set<string>();
-  const queue = [rootId];
+  const normalizedRoot = getNodeById(rootId)?.id ?? rootId;
+  const queue = [normalizedRoot];
 
   while (queue.length > 0) {
     const current = queue.pop()!;
@@ -277,7 +287,18 @@ export interface SearchResult extends CachedNode {
   rank: number;
 }
 
-export function searchNodes(query: string, limit = 20): SearchResult[] {
+function buildIdScopeClause(scopeIds?: Set<string>): { clause: string; params: string[] } {
+  if (!scopeIds) return { clause: "", params: [] };
+  if (scopeIds.size === 0) return { clause: " AND 0", params: [] };
+
+  const ids = [...scopeIds];
+  return {
+    clause: ` AND n.id IN (${ids.map(() => "?").join(", ")})`,
+    params: ids,
+  };
+}
+
+export function searchNodes(query: string, limit = 20, scopeIds?: Set<string>): SearchResult[] {
   if (!isCacheCurrentAccount()) return [];
 
   const db = getCacheDb();
@@ -290,14 +311,15 @@ export function searchNodes(query: string, limit = 20): SearchResult[] {
 
   if (!ftsQuery) return [];
 
+  const scope = buildIdScopeClause(scopeIds);
   const rows = db.query(`
     SELECT n.*, nodes_fts.rank
     FROM nodes_fts
     JOIN nodes n ON n.rowid = nodes_fts.rowid
-    WHERE nodes_fts MATCH ?
+    WHERE nodes_fts MATCH ?${scope.clause}
     ORDER BY nodes_fts.rank
     LIMIT ?
-  `).all(ftsQuery, limit) as Array<CachedNode & { rank: number }>;
+  `).all(ftsQuery, ...scope.params, limit) as Array<CachedNode & { rank: number }>;
 
   return rows.map((row) => ({
     ...row,
@@ -305,20 +327,21 @@ export function searchNodes(query: string, limit = 20): SearchResult[] {
   }));
 }
 
-export function searchNodesByTrigram(matchQuery: string, limit = 20): SearchResult[] {
+export function searchNodesByTrigram(matchQuery: string, limit = 20, scopeIds?: Set<string>): SearchResult[] {
   if (!matchQuery.trim()) return [];
   if (!isCacheCurrentAccount()) return [];
 
   const db = getCacheDb();
 
   try {
+    const scope = buildIdScopeClause(scopeIds);
     const rows = db.query(`
       SELECT n.*, 0 as rank
       FROM nodes_trigram
       JOIN nodes n ON n.rowid = nodes_trigram.rowid
-      WHERE nodes_trigram MATCH ?
+      WHERE nodes_trigram MATCH ?${scope.clause}
       LIMIT ?
-    `).all(matchQuery, limit) as Array<CachedNode & { rank: number }>;
+    `).all(matchQuery, ...scope.params, limit) as Array<CachedNode & { rank: number }>;
 
     return rows.map((row) => ({
       ...row,

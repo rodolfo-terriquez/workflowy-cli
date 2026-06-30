@@ -8,7 +8,7 @@ import { isAgentMode } from "../agent.ts";
 
 const COMMANDS = [
   "node:read", "node:add", "node:move", "node:complete", "node:update", "node:delete",
-  "node:find", "node:context", "node:todos", "node:template", "node:export",
+  "node:find", "node:context", "node:todos", "todos", "node:template", "node:export",
   "node:bulk complete", "node:bulk delete", "node:bulk move",
   "search", "tags", "targets", "bookmark:list", "bookmark:save", "history",
   "cache:sync", "cache:diff",
@@ -35,7 +35,7 @@ _wf() {
       ;;
     args)
       case $words[1] in
-        node:read|node:find|node:context|node:todos)
+        node:read|node:find|node:context|node:todos|todos)
           _arguments '--format[Output format]:format:(json outline tsv csv)' '--copy[Copy to clipboard]' '--live[Bypass cache]'
           ;;
         search)
@@ -136,7 +136,7 @@ export function registerCompletions(program: Command): void {
       writeFileSync(join(getConfigDir(), "completions-installed"), shell, "utf-8");
 
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "completions install", wf_version: "3.0.11" }, shell, path: targetPath }));
+        console.log(JSON.stringify({ meta: { command: "completions install", wf_version: "3.0.12" }, shell, path: targetPath }));
       } else {
         console.log(`\n  ${chalk.green("✓")} Installed ${shell} completions at ${chalk.dim(targetPath)}`);
         console.log(`  Restart your shell or run ${chalk.cyan("source " + targetPath)} to activate.\n`);

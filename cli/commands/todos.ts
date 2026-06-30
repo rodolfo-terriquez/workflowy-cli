@@ -25,6 +25,7 @@ function parseSince(s: string): number {
 export function registerNodeTodos(program: Command): void {
   program
     .command("node:todos")
+    .alias("todos")
     .description("Query open or completed todos")
     .option("--target <target>", "Scope to a subtree (e.g. @today)")
     .option("--completed", "Show completed todos instead of incomplete")
@@ -107,7 +108,7 @@ export function registerNodeTodos(program: Command): void {
             account: config.activeAccount,
             cache_age_seconds: cacheAge,
             cache_stale: isCacheStale(),
-            wf_version: "3.0.11",
+            wf_version: "3.0.12",
           },
           nodes: rows.map((r) => ({
             id: r.id,

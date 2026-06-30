@@ -54,7 +54,9 @@ export function registerNodeAdd(program: Command): void {
         if (opts.note) item.d = opts.note;
         if (opts.type !== "bullet") item.l = opts.type;
 
-        const shouldVerifyInsert = isAgentMode() || !!opts.after;
+        const useJson = opts.format === "json" || isAgentMode();
+        const shouldVerifyInsert = useJson || !!opts.after;
+        const fatalOnVerificationFailure = isAgentMode() || !!opts.after;
         const beforeChildren = shouldVerifyInsert ? await readLiveChildren(api, resolvedId) : [];
 
         if (opts.after) {
@@ -68,7 +70,6 @@ export function registerNodeAdd(program: Command): void {
         }
 
         markTargetDirty(resolvedId);
-        const useJson = opts.format === "json" || isAgentMode();
         let createdNodeId: string | undefined;
         let createdNodeText: string | undefined;
         let verificationStatus: "verified" | "mismatch" | "not_found" | "ambiguous" | "skipped" = "skipped";
@@ -88,7 +89,7 @@ export function registerNodeAdd(program: Command): void {
             createdNodeId = verification.createdNodeId ?? undefined;
             createdNodeText = verification.createdNodeText ?? undefined;
 
-            if (verification.status !== "verified") {
+            if (verification.status !== "verified" && fatalOnVerificationFailure) {
               exitWithError(
                 "write_verification_failed",
                 `node:add completed but could not verify the created node. ${verification.message}`,
