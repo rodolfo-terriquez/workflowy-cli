@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.1.1 - 2026-06-30
+
+Patch release for interactive shell polish.
+
+- Fixed compiled-binary interactive mode so commands run via the installed `wf` executable instead of trying to load source files from Bun's embedded filesystem.
+- Updated interactive `help` to show concise, human-friendly examples and explain that the leading `wf` is omitted inside the shell.
+- Updated interactive autocomplete to include the short node command aliases.
+
 ## 3.1.0 - 2026-06-30
 
 Polish release for the CLI recording demo and friendlier human/agent workflows.

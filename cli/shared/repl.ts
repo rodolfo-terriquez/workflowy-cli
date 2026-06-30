@@ -10,11 +10,12 @@ const HISTORY_PATH = join(getConfigDir(), "history");
 const MAX_HISTORY = 500;
 
 const ALL_COMMANDS = [
+  "read", "add", "move", "complete", "update", "delete", "find", "context", "todos", "bulk", "template", "export",
   "node:read", "node:add", "node:move", "node:complete", "node:update", "node:delete",
   "node:find", "node:context", "node:todos", "node:template", "node:export",
   "node:bulk complete", "node:bulk delete", "node:bulk move",
-  "search", "tags", "targets", "bookmark:list", "bookmark:save", "history",
-  "cache:sync", "cache:diff",
+  "search", "tags", "targets", "bookmark:list", "bookmark:save", "bookmarks", "history",
+  "sync", "cache:sync", "cache:diff",
   "ai:propose", "ai:preview", "ai:apply", "ai:reject", "ai:list",
   "batch",
   "config:set", "config:get", "config:alias",
@@ -22,7 +23,7 @@ const ALL_COMMANDS = [
   "watch:start", "watch:stop", "watch:status",
   "webhook:create", "webhook:list", "webhook:delete", "webhook:test",
   "workflow:run", "workflow:list", "workflow:create",
-  "mcp", "doctor", "completions", "login", "self:update",
+  "mcp", "doctor", "status", "completions", "login", "self:update",
   "exit", "quit", "help",
 ];
 
@@ -69,6 +70,42 @@ function getCachedNodeNames(limit = 50): string[] {
   }
 }
 
+function isBundledRuntime(): boolean {
+  return import.meta.dir.startsWith("/$bunfs/") || import.meta.dir.includes("$bunfs");
+}
+
+function buildReplCommand(cmdTokens: string[]): string[] {
+  if (isBundledRuntime()) {
+    return [process.execPath, ...cmdTokens];
+  }
+
+  return ["bun", "run", join(import.meta.dir, "../wf.ts"), ...cmdTokens];
+}
+
+function printReplHelp(): void {
+  const c = chalk.hex("#47b8f5");
+  const dim = chalk.dim;
+
+  console.log(dim("\n  Common commands:\n"));
+  const rows: Array<[string, string]> = [
+    ["read @demo --depth 2", "Read a node and its children"],
+    ["add @inbox \"Quick note\"", "Add a child node"],
+    ["search video --target @youtube", "Search, optionally scoped to a subtree"],
+    ["find \"Project name\"", "Find nodes by name or path"],
+    ["todos --target @today", "List open todos"],
+    ["sync", "Refresh the local cache"],
+    ["targets", "List saved @targets"],
+    ["ai:propose \"...\"", "Preview an AI-generated edit"],
+    ["exit", "Leave interactive mode"],
+  ];
+
+  for (const [cmd, desc] of rows) {
+    console.log(`  ${c(cmd.padEnd(32))} ${dim(desc)}`);
+  }
+
+  console.log(dim("\n  Tip: inside this shell, omit the leading `wf`. Full names like node:add still work.\n"));
+}
+
 function completer(line: string): [string[], string] {
   const trimmed = line.trimStart();
   const parts = trimmed.split(/\s+/);
@@ -96,7 +133,7 @@ function completer(line: string): [string[], string] {
 
   // After commands that take a target argument, offer @targets
   const cmd = parts[0]!;
-  const targetCommands = ["node:read", "node:add", "node:find", "node:context", "node:move", "node:export"];
+  const targetCommands = ["read", "add", "find", "context", "move", "export", "node:read", "node:add", "node:find", "node:context", "node:move", "node:export"];
   if (targetCommands.includes(cmd) && parts.length === 2) {
     const allTargets = [...TARGET_SLUGS, ...getCachedNodeNames(20)];
     const matches = allTargets.filter((t) => t.toLowerCase().startsWith(lastPart.toLowerCase()));
@@ -152,19 +189,7 @@ export async function startRepl(): Promise<void> {
     }
 
     if (line === "help") {
-      console.log(chalk.dim("\n  Available commands:\n"));
-      const groups: Record<string, string[]> = {};
-      for (const cmd of ALL_COMMANDS) {
-        if (cmd === "exit" || cmd === "quit" || cmd === "help") continue;
-        const [group] = cmd.split(":");
-        const key = cmd.includes(":") ? group! : "top-level";
-        if (!groups[key]) groups[key] = [];
-        groups[key]!.push(cmd);
-      }
-      for (const [group, cmds] of Object.entries(groups)) {
-        console.log(`  ${chalk.bold(group)}: ${cmds.join(", ")}`);
-      }
-      console.log("");
+      printReplHelp();
       rl.prompt();
       return;
     }
@@ -178,14 +203,11 @@ export async function startRepl(): Promise<void> {
     const cmdTokens = expanded.slice(2);
 
     try {
-      const proc = Bun.spawn(
-        ["bun", "run", import.meta.dir + "/../wf.ts", ...cmdTokens],
-        {
-          stdout: "inherit",
-          stderr: "inherit",
-          env: { ...process.env, FORCE_COLOR: "1" },
-        }
-      );
+      const proc = Bun.spawn(buildReplCommand(cmdTokens), {
+        stdout: "inherit",
+        stderr: "inherit",
+        env: { ...process.env, FORCE_COLOR: "1" },
+      });
       await proc.exited;
     } catch (err) {
       console.error(chalk.red(`  Error: ${err instanceof Error ? err.message : String(err)}`));
