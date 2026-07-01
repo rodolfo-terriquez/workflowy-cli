@@ -101,7 +101,7 @@ export function registerTags(program: Command): void {
             account: config.activeAccount,
             cache_age_seconds: cacheAge,
             cache_stale: isCacheStale(),
-            wf_version: "3.1.6",
+            wf_version: "3.1.7",
           },
           tags,
         }, null, 2));

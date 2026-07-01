@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.1.7 - 2026-07-01
+
+Patch release for todo readability.
+
+- Darkened human-readable `wf todos` breadcrumb lines so task text stands out more clearly.
+
 ## 3.1.6 - 2026-07-01
 
 Patch release for human-readable todo output.

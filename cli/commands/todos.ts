@@ -31,7 +31,7 @@ function truncateMiddle(value: string, maxLength: number): string {
 function formatTodoPath(path: string, indent = "    "): string {
   const width = process.stdout.columns ?? 100;
   const maxPathLength = Math.max(24, width - indent.length - 2);
-  return `${indent}${chalk.dim(truncateMiddle(path, maxPathLength))}`;
+  return `${indent}${chalk.hex("#5f5f5f")(truncateMiddle(path, maxPathLength))}`;
 }
 
 function parseSince(s: string): number {
@@ -144,7 +144,7 @@ export function registerNodeTodos(program: Command): void {
             account: config.activeAccount,
             cache_age_seconds: cacheAge,
             cache_stale: isCacheStale(),
-            wf_version: "3.1.6",
+            wf_version: "3.1.7",
           },
           nodes: rows.map((r) => ({
             id: r.id,
