@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.5 - 2026-06-30
+
+Patch release for task aggregation demos.
+
+- Added repeatable `--tag <tag>` filtering to `wf todos`, so commands like `wf todos --target @everyday --tag morning` can pull tagged tasks from across a subtree.
+- Included todo tag filtering in generated shell completions.
+
 ## 3.1.4 - 2026-06-30
 
 Patch release for AI proposal context.

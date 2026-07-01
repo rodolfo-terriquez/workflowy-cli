@@ -31,11 +31,11 @@ This project currently ships GitHub releases first. npm distribution is deferred
 5. Create and push the release tag.
 
    ```bash
-   git tag v3.1.4
-   git push origin v3.1.4
+   git tag v3.1.5
+   git push origin v3.1.5
    ```
 
-6. Create a GitHub release for `v3.1.4`.
+6. Create a GitHub release for `v3.1.5`.
 
    - Use `CHANGELOG.md` as the release notes source.
    - Attach `dist/wf`.

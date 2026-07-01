@@ -10,6 +10,14 @@ import { loadConfig } from "../shared/config.ts";
 import { startOutputCapture, handleCopyFlag } from "../shared/copy-wrapper.ts";
 import { resolveCacheTargetReference } from "../shared/path.ts";
 
+function collectTags(value: string, previous: string[] = []): string[] {
+  return [...previous, value];
+}
+
+function normalizeTag(tag: string): string {
+  return tag.startsWith("#") ? tag : `#${tag}`;
+}
+
 function parseSince(s: string): number {
   const match = s.match(/^(\d+)(m|h|d)$/);
   if (!match) return 30 * 60 * 1000;
@@ -30,6 +38,7 @@ export function registerNodeTodos(program: Command): void {
     .option("--target <target>", "Scope to a subtree (e.g. @today)")
     .option("--completed", "Show completed todos instead of incomplete")
     .option("--since <duration>", "Only show items modified in last N (e.g. 2h, 7d)")
+    .option("--tag <tag>", "Only show todos containing this hashtag (repeatable)", collectTags, [])
     .option("--limit <n>", "Max results", parseInt)
     .option("--format <type>", "Output format (outline|json|tsv|csv)")
     .option("--copy", "Copy output to clipboard")
@@ -37,6 +46,7 @@ export function registerNodeTodos(program: Command): void {
       target?: string;
       completed?: boolean;
       since?: string;
+      tag?: string[];
       limit?: number;
       format?: string;
       copy?: boolean;
@@ -78,6 +88,15 @@ export function registerNodeTodos(program: Command): void {
         rows = rows.filter((r) => subtreeIds!.has(r.id));
       }
 
+      const tags = opts.tag ?? [];
+      if (tags.length > 0) {
+        const normalizedTags = tags.map(normalizeTag);
+        rows = rows.filter((r) => {
+          const haystack = `${cleanHtml(r.name)} ${r.note ? cleanHtml(r.note) : ""}`;
+          return normalizedTags.every((tag) => haystack.includes(tag));
+        });
+      }
+
       rows = rows.slice(0, limit);
 
       const format = opts.format ?? (isAgentMode() ? "json" : "outline");
@@ -103,12 +122,13 @@ export function registerNodeTodos(program: Command): void {
           meta: {
             command: "node:todos",
             target: opts.target ?? null,
+            tags: opts.tag ?? [],
             count: rows.length,
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
             cache_age_seconds: cacheAge,
             cache_stale: isCacheStale(),
-            wf_version: "3.1.4",
+            wf_version: "3.1.5",
           },
           nodes: rows.map((r) => ({
             id: r.id,
