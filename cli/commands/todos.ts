@@ -18,6 +18,22 @@ function normalizeTag(tag: string): string {
   return tag.startsWith("#") ? tag : `#${tag}`;
 }
 
+function truncateMiddle(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  if (maxLength <= 1) return "…";
+  if (maxLength <= 12) return value.slice(0, maxLength - 1) + "…";
+
+  const keepStart = Math.ceil((maxLength - 1) / 2);
+  const keepEnd = Math.floor((maxLength - 1) / 2);
+  return `${value.slice(0, keepStart)}…${value.slice(value.length - keepEnd)}`;
+}
+
+function formatTodoPath(path: string, indent = "    "): string {
+  const width = process.stdout.columns ?? 100;
+  const maxPathLength = Math.max(24, width - indent.length - 2);
+  return `${indent}${chalk.dim(truncateMiddle(path, maxPathLength))}`;
+}
+
 function parseSince(s: string): number {
   const match = s.match(/^(\d+)(m|h|d)$/);
   if (!match) return 30 * 60 * 1000;
@@ -128,7 +144,7 @@ export function registerNodeTodos(program: Command): void {
             account: config.activeAccount,
             cache_age_seconds: cacheAge,
             cache_stale: isCacheStale(),
-            wf_version: "3.1.5",
+            wf_version: "3.1.6",
           },
           nodes: rows.map((r) => ({
             id: r.id,
@@ -154,7 +170,8 @@ export function registerNodeTodos(program: Command): void {
         const name = cleanHtml(r.name);
         const icon = r.completed === 1 ? chalk.green("✓") : chalk.yellow("☐");
         const path = r.parent_id ? buildBreadcrumbDisplay(r.parent_id) : "(root)";
-        console.log(`  ${icon} ${name}  ${chalk.dim(path)}`);
+        console.log(`  ${icon} ${name}`);
+        console.log(formatTodoPath(path));
       }
 
       console.log("");

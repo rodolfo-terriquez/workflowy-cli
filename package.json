@@ -1,6 +1,6 @@
 {
   "name": "@workflowy/cli",
-  "version": "3.1.5",
+  "version": "3.1.6",
   "description": "WorkFlowy CLI — command-line interface for agents, automations, and power users",
   "license": "MIT",
   "repository": {

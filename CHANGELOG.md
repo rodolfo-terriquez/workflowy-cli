@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.6 - 2026-07-01
+
+Patch release for human-readable todo output.
+
+- Moved `wf todos` breadcrumbs onto a dimmed second line aligned under the todo text.
+- Truncated human-readable breadcrumbs to the terminal width while preserving full paths in JSON/TSV/CSV output.
+
 ## 3.1.5 - 2026-06-30
 
 Patch release for task aggregation demos.

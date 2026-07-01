@@ -103,7 +103,7 @@ export function registerAiCommands(program: Command): void {
             command: "ai:propose",
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.1.5",
+            wf_version: "3.1.6",
           },
           proposal: {
             id: proposalId,
@@ -151,7 +151,7 @@ export function registerAiCommands(program: Command): void {
 
       if (useJson) {
         console.log(JSON.stringify({
-          meta: { command: "ai:preview", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.5" },
+          meta: { command: "ai:preview", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.6" },
           proposal: {
             id: proposal.id,
             summary: proposal.summary,
@@ -234,7 +234,7 @@ export function registerAiCommands(program: Command): void {
             command: "ai:apply",
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.1.5",
+            wf_version: "3.1.6",
           };
           const cacheAge = getCacheAgeSeconds();
           if (cacheAge !== null) {
@@ -273,7 +273,7 @@ export function registerAiCommands(program: Command): void {
 
         if (isAgentMode()) {
           console.log(JSON.stringify({
-            meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.5" },
+            meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.6" },
             message: `Rejected ${all.length} proposals.`,
           }, null, 2));
         } else {
@@ -299,7 +299,7 @@ export function registerAiCommands(program: Command): void {
 
       if (useJson) {
         console.log(JSON.stringify({
-          meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.5" },
+          meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.6" },
           message: `Proposal ${proposal.id} rejected.`,
         }, null, 2));
       } else {

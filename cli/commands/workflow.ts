@@ -106,7 +106,7 @@ export function registerWorkflow(program: Command): void {
             return { name: f, description: null, steps: 0 };
           }
         });
-        console.log(JSON.stringify({ meta: { command: "workflow:list", wf_version: "3.1.5" }, workflows }, null, 2));
+        console.log(JSON.stringify({ meta: { command: "workflow:list", wf_version: "3.1.6" }, workflows }, null, 2));
         return;
       }
 
@@ -156,7 +156,7 @@ steps:
       writeFileSync(filePath, template, "utf-8");
 
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "workflow:create", wf_version: "3.1.5" }, path: filePath }));
+        console.log(JSON.stringify({ meta: { command: "workflow:create", wf_version: "3.1.6" }, path: filePath }));
       } else {
         console.log(`\n  ${chalk.green("✓")} Created workflow at ${chalk.dim(filePath)}`);
         console.log(`  Edit the file to define your workflow steps.\n`);
@@ -236,7 +236,7 @@ steps:
 
       if (isAgentMode() || opts.format === "json") {
         console.log(JSON.stringify({
-          meta: { command: "workflow:run", workflow: name, wf_version: "3.1.5" },
+          meta: { command: "workflow:run", workflow: name, wf_version: "3.1.6" },
           results,
         }, null, 2));
       } else {
