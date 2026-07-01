@@ -1,6 +1,18 @@
 import chalk from "chalk";
 import type { FlatNode } from "../shared/nodes.ts";
 
+function truncate(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  if (maxLength <= 1) return "…";
+  return value.slice(0, maxLength - 1) + "…";
+}
+
+function truncateForTerminal(value: string, prefixLength: number): string {
+  const width = process.stdout.columns ?? 100;
+  const maxLength = Math.max(24, width - prefixLength - 2);
+  return truncate(value, maxLength);
+}
+
 function getBullet(node: FlatNode): { bullet: string; text: string } {
   const hasVisibleChildren = node.children.length > 0;
   const hasHiddenChildren = node.hasMore;
@@ -42,14 +54,15 @@ export function formatOutline(
   if (currentDepth === 0) {
     lines.push(`${bullet} ${text}`);
     if (node.note) {
-      lines.push(`  ${chalk.dim(node.note)}`);
+      lines.push(`  ${chalk.dim(truncateForTerminal(node.note, 2))}`);
     }
   } else {
     const connector = isLast ? chalk.dim("└─") : chalk.dim("├─");
     lines.push(`${prefix}${connector} ${bullet} ${text}`);
     if (node.note) {
       const notePrefix = prefix + (isLast ? "   " : chalk.dim("│") + "  ");
-      lines.push(`${notePrefix}  ${chalk.dim(node.note)}`);
+      const visiblePrefixLength = prefix.length + 5;
+      lines.push(`${notePrefix}  ${chalk.dim(truncateForTerminal(node.note, visiblePrefixLength))}`);
     }
   }
 

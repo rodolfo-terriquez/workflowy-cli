@@ -172,9 +172,10 @@ export function tieredSearch(query: string, limit = 20, target?: string): SmartS
     match_type: "fts" as const,
   }));
 
-  if (results.length >= 3) return results.slice(0, limit);
+  if (results.length > 0) return results.slice(0, limit);
 
-  // Tier 2: Fuzzy fallback
+  // Tier 2: Fuzzy fallback only when full-text search found nothing.
+  // This keeps exact human searches from being padded with weak fuzzy matches.
   const ftsIds = new Set(results.map((r) => r.id));
   const fuzzyResults = fuzzySearch(query, limit * 5, scopeIds);
   for (const r of fuzzyResults) {

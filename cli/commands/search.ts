@@ -139,6 +139,26 @@ async function searchSmart(
   outputResults(query, results, "cache+smart", format, target);
 }
 
+function truncateMiddle(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  if (maxLength <= 1) return "…";
+  if (maxLength <= 12) return value.slice(0, maxLength - 1) + "…";
+
+  const keepStart = Math.ceil((maxLength - 1) / 2);
+  const keepEnd = Math.floor((maxLength - 1) / 2);
+  return `${value.slice(0, keepStart)}…${value.slice(value.length - keepEnd)}`;
+}
+
+function truncateEnd(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  if (maxLength <= 1) return "…";
+  return value.slice(0, maxLength - 1) + "…";
+}
+
+function terminalWidth(): number {
+  return process.stdout.columns ?? 100;
+}
+
 function outputResults(
   query: string,
   results: SmartSearchResult[],
@@ -177,7 +197,7 @@ function outputResults(
           cache_age_seconds: cacheAge,
           cache_stale: isCacheStale(),
           smart_search_available: !!config.llm?.apiKey,
-          wf_version: "3.1.7",
+          wf_version: "3.1.8",
         },
         nodes: results.map((r) => ({
           id: r.id,
@@ -218,20 +238,23 @@ function outputResults(
         ? chalk.yellow("☐")
         : chalk.dim("•");
 
-    const highlighted = name.replace(
-      new RegExp(`(${escapeRegex(query)})`, "gi"),
-      chalk.yellow("$1")
-    );
-
     const matchBadge = r.match_type === "smart"
       ? chalk.magenta(" [smart]")
       : r.match_type === "fuzzy"
         ? chalk.blue(" [fuzzy]")
         : "";
 
-    console.log(`  ${bullet} ${highlighted}${matchBadge}  ${chalk.dim(r.id)}`);
-    console.log(`    ${chalk.dim("→")} ${chalk.dim(r.parent_path)}`);
-    if (r.note) console.log(`    ${chalk.dim(cleanHtml(r.note))}`);
+    const titleMax = Math.max(30, terminalWidth() - 6);
+    const pathMax = Math.max(30, terminalWidth() - 8);
+    const truncatedName = truncateEnd(name, titleMax - (r.match_type !== "fts" ? 8 : 0));
+    const highlighted = truncatedName.replace(
+      new RegExp(`(${escapeRegex(query)})`, "gi"),
+      chalk.yellow("$1")
+    );
+
+    console.log(`  ${bullet} ${highlighted}${matchBadge}`);
+    console.log(`    ${chalk.dim("→")} ${chalk.hex("#5f5f5f")(truncateMiddle(r.parent_path ?? "(root)", pathMax))}`);
+    if (r.note) console.log(`    ${chalk.hex("#5f5f5f")(truncateEnd(cleanHtml(r.note), pathMax))}`);
   }
 
   console.log("");

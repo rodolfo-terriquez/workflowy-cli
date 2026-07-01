@@ -140,7 +140,7 @@ export function registerCompletions(program: Command): void {
       writeFileSync(join(getConfigDir(), "completions-installed"), shell, "utf-8");
 
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "completions install", wf_version: "3.1.7" }, shell, path: targetPath }));
+        console.log(JSON.stringify({ meta: { command: "completions install", wf_version: "3.1.8" }, shell, path: targetPath }));
       } else {
         console.log(`\n  ${chalk.green("✓")} Installed ${shell} completions at ${chalk.dim(targetPath)}`);
         console.log(`  Restart your shell or run ${chalk.cyan("source " + targetPath)} to activate.\n`);

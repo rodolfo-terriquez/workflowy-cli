@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.1.8 - 2026-07-01
+
+Patch release for human-output readability.
+
+- Truncated long notes in outline output so wrapped notes no longer break tree connector lines.
+- Tightened search fallback so exact full-text results are not padded with weak fuzzy matches.
+- Removed node IDs from human-readable search output while preserving them in structured formats.
+- Grouped `wf ai:propose` and `wf ai:preview` operations by action with multi-line, truncated fields.
+- Simplified AI proposal follow-up commands to `wf ai:apply` / `wf ai:reject`, with the proposal ID shown as optional context.
+
 ## 3.1.7 - 2026-07-01
 
 Patch release for todo readability.

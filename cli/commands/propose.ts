@@ -103,7 +103,7 @@ export function registerAiCommands(program: Command): void {
             command: "ai:propose",
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.1.7",
+            wf_version: "3.1.8",
           },
           proposal: {
             id: proposalId,
@@ -116,15 +116,10 @@ export function registerAiCommands(program: Command): void {
         console.log(`  ${chalk.cyan("Proposal")} ${chalk.dim(proposalId)} — "${instructions}"\n`);
         console.log(`  ${chalk.bold(result.summary)}\n`);
         console.log(`  Changes (${result.operations.length} operation${result.operations.length !== 1 ? "s" : ""}):\n`);
+        printOperationGroups(result.operations);
 
-        for (let i = 0; i < result.operations.length; i++) {
-          const op = result.operations[i]!;
-          const isLast = i === result.operations.length - 1;
-          const connector = isLast ? "└─" : "├─";
-          console.log(`  ${connector} ${formatOpDescription(op)}`);
-        }
-
-        console.log(`\n  Run ${chalk.green("wf ai:apply " + proposalId)} to execute, or ${chalk.red("wf ai:reject " + proposalId)} to discard.\n`);
+        console.log(`\n  Next: ${chalk.green("wf ai:apply")} to execute, or ${chalk.red("wf ai:reject")} to discard.`);
+        console.log(`  ${chalk.dim(`Proposal id: ${proposalId} (optional if this is your latest proposal)`)}\n`);
       }
     });
 
@@ -151,7 +146,7 @@ export function registerAiCommands(program: Command): void {
 
       if (useJson) {
         console.log(JSON.stringify({
-          meta: { command: "ai:preview", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.7" },
+          meta: { command: "ai:preview", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.8" },
           proposal: {
             id: proposal.id,
             summary: proposal.summary,
@@ -165,12 +160,7 @@ export function registerAiCommands(program: Command): void {
         console.log(`  ${chalk.dim("Instruction:")} ${proposal.instruction}\n`);
         console.log(`  ${chalk.bold(proposal.summary)}\n`);
 
-        for (let i = 0; i < proposal.operations.length; i++) {
-          const op = proposal.operations[i]!;
-          const isLast = i === proposal.operations.length - 1;
-          console.log(`  ${isLast ? "└─" : "├─"} ${formatOpDescription(op)}`);
-        }
-        console.log("");
+        printOperationGroups(proposal.operations);
       }
     });
 
@@ -234,7 +224,7 @@ export function registerAiCommands(program: Command): void {
             command: "ai:apply",
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.1.7",
+            wf_version: "3.1.8",
           };
           const cacheAge = getCacheAgeSeconds();
           if (cacheAge !== null) {
@@ -273,7 +263,7 @@ export function registerAiCommands(program: Command): void {
 
         if (isAgentMode()) {
           console.log(JSON.stringify({
-            meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.7" },
+            meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.8" },
             message: `Rejected ${all.length} proposals.`,
           }, null, 2));
         } else {
@@ -299,13 +289,27 @@ export function registerAiCommands(program: Command): void {
 
       if (useJson) {
         console.log(JSON.stringify({
-          meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.7" },
+          meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.1.8" },
           message: `Proposal ${proposal.id} rejected.`,
         }, null, 2));
       } else {
         console.log(`\n  ${chalk.red("✗")} Proposal ${chalk.dim(proposal.id)} rejected.\n`);
       }
     });
+}
+
+function terminalWidth(): number {
+  return process.stdout.columns ?? 100;
+}
+
+function truncateEnd(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  if (maxLength <= 1) return "…";
+  return value.slice(0, maxLength - 1) + "…";
+}
+
+function formatField(value: string | undefined | null, maxLength = terminalWidth() - 12): string {
+  return truncateEnd(value && value.trim().length > 0 ? value : "(unknown)", Math.max(20, maxLength));
 }
 
 function startProgress(label: string): { stop: () => void } {
@@ -328,6 +332,76 @@ function startProgress(label: string): { stop: () => void } {
       process.stdout.write(`\r${" ".repeat(80)}\r`);
     },
   };
+}
+
+function printOperationGroups(operations: ProposalOperation[]): void {
+  if (operations.length === 0) {
+    console.log(`  ${chalk.dim("No operations proposed.")}`);
+    console.log("");
+    return;
+  }
+
+  const order: ProposalOperation["op"][] = ["insert", "move", "update", "complete", "uncomplete", "delete"];
+  const labels: Record<ProposalOperation["op"], string> = {
+    insert: "Insert",
+    move: "Move",
+    update: "Update",
+    complete: "Complete",
+    uncomplete: "Uncomplete",
+    delete: "Delete",
+  };
+  const colors: Record<ProposalOperation["op"], (value: string) => string> = {
+    insert: chalk.green,
+    move: chalk.blue,
+    update: chalk.yellow,
+    complete: chalk.green,
+    uncomplete: chalk.yellow,
+    delete: chalk.red,
+  };
+
+  for (const opType of order) {
+    const group = operations.filter((op) => op.op === opType);
+    if (group.length === 0) continue;
+
+    console.log(`  ${colors[opType](labels[opType])}`);
+    for (let i = 0; i < group.length; i++) {
+      const op = group[i]!;
+      console.log(formatGroupedOperation(op, i + 1));
+    }
+    console.log("");
+  }
+}
+
+function formatGroupedOperation(op: ProposalOperation, index: number): string {
+  const width = terminalWidth();
+  const textWidth = Math.max(24, width - 10);
+  const lines: string[] = [];
+  const number = `${index}.`.padStart(4);
+
+  switch (op.op) {
+    case "insert":
+      lines.push(`    ${chalk.dim(number)} ${chalk.bold(formatField(op.text, textWidth))}`);
+      lines.push(`         ${chalk.dim("under:")} ${chalk.cyan(formatField(op.under_name ?? op.under, textWidth))}`);
+      break;
+    case "move":
+      lines.push(`    ${chalk.dim(number)} ${chalk.bold(formatField(op.ref_name ?? op.ref, textWidth))}`);
+      lines.push(`         ${chalk.dim("from:")}  ${formatField(op.from_name ?? op.from, textWidth)}`);
+      lines.push(`         ${chalk.dim("to:")}    ${chalk.cyan(formatField(op.under_name ?? op.under, textWidth))}`);
+      break;
+    case "update":
+      lines.push(`    ${chalk.dim(number)} ${chalk.bold(formatField(op.ref_name ?? op.ref, textWidth))}`);
+      lines.push(`         ${chalk.dim("to:")} ${chalk.yellow(formatField(op.text, textWidth))}`);
+      break;
+    case "complete":
+    case "uncomplete":
+      lines.push(`    ${chalk.dim(number)} ${chalk.bold(formatField(op.ref_name ?? op.ref, textWidth))}`);
+      break;
+    case "delete":
+      lines.push(`    ${chalk.dim(number)} ${chalk.bold(formatField(op.ref_name ?? op.ref, textWidth))}`);
+      break;
+  }
+
+  return lines.join("\n");
 }
 
 function formatOpDescription(op: ProposalOperation): string {
