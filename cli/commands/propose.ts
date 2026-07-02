@@ -312,6 +312,11 @@ function formatField(value: string | undefined | null, maxLength = terminalWidth
   return truncateEnd(value && value.trim().length > 0 ? value : "(unknown)", Math.max(20, maxLength));
 }
 
+function quoteField(value: string | undefined | null, maxLength = terminalWidth() - 12): string {
+  const formatted = formatField(value, maxLength);
+  return formatted === "(unknown)" ? formatted : JSON.stringify(formatted);
+}
+
 function startProgress(label: string): { stop: () => void } {
   const startedAt = Date.now();
   let frame = 0;
@@ -374,34 +379,24 @@ function printOperationGroups(operations: ProposalOperation[]): void {
 
 function formatGroupedOperation(op: ProposalOperation, index: number): string {
   const width = terminalWidth();
-  const textWidth = Math.max(24, width - 10);
-  const lines: string[] = [];
+  const textWidth = Math.max(24, width - 16);
   const number = `${index}.`.padStart(4);
+  const arrow = chalk.dim("->");
 
   switch (op.op) {
     case "insert":
-      lines.push(`    ${chalk.dim(number)} ${chalk.bold(formatField(op.text, textWidth))}`);
-      lines.push(`         ${chalk.dim("under:")} ${chalk.cyan(formatField(op.under_name ?? op.under, textWidth))}`);
-      break;
+      return `    ${chalk.dim(number)} ${chalk.green("+")} ${chalk.bold(quoteField(op.text, textWidth))} ${arrow} ${chalk.cyan(formatField(op.under_name ?? op.under, textWidth))}`;
     case "move":
-      lines.push(`    ${chalk.dim(number)} ${chalk.bold(formatField(op.ref_name ?? op.ref, textWidth))}`);
-      lines.push(`         ${chalk.dim("from:")}  ${formatField(op.from_name ?? op.from, textWidth)}`);
-      lines.push(`         ${chalk.dim("to:")}    ${chalk.cyan(formatField(op.under_name ?? op.under, textWidth))}`);
-      break;
+      return `    ${chalk.dim(number)} ${chalk.blue(">")} ${chalk.bold(formatField(op.ref_name ?? op.ref, textWidth))} ${chalk.dim("from")} ${formatField(op.from_name ?? op.from, textWidth)} ${arrow} ${chalk.cyan(formatField(op.under_name ?? op.under, textWidth))}`;
     case "update":
-      lines.push(`    ${chalk.dim(number)} ${chalk.bold(formatField(op.ref_name ?? op.ref, textWidth))}`);
-      lines.push(`         ${chalk.dim("to:")} ${chalk.yellow(formatField(op.text, textWidth))}`);
-      break;
+      return `    ${chalk.dim(number)} ${chalk.yellow("~")} ${chalk.bold(formatField(op.ref_name ?? op.ref, textWidth))} ${arrow} ${chalk.yellow(quoteField(op.text, textWidth))}`;
     case "complete":
+      return `    ${chalk.dim(number)} ${chalk.green("[x]")} ${chalk.bold(formatField(op.ref_name ?? op.ref, textWidth))}`;
     case "uncomplete":
-      lines.push(`    ${chalk.dim(number)} ${chalk.bold(formatField(op.ref_name ?? op.ref, textWidth))}`);
-      break;
+      return `    ${chalk.dim(number)} ${chalk.yellow("[ ]")} ${chalk.bold(formatField(op.ref_name ?? op.ref, textWidth))}`;
     case "delete":
-      lines.push(`    ${chalk.dim(number)} ${chalk.bold(formatField(op.ref_name ?? op.ref, textWidth))}`);
-      break;
+      return `    ${chalk.dim(number)} ${chalk.red("-")} ${chalk.bold(formatField(op.ref_name ?? op.ref, textWidth))}`;
   }
-
-  return lines.join("\n");
 }
 
 function formatOpDescription(op: ProposalOperation): string {

@@ -1008,6 +1008,39 @@ export function registerMcp(program: Command): void {
     .description("Start as MCP server (stdio or HTTP/SSE transport)")
     .option("--port <n>", "HTTP/SSE port (e.g. 3399)")
     .option("--tools <list>", "Comma-separated list of tools to expose")
+    .addHelpText("after", `
+
+Examples:
+  $ wf mcp
+    Start an MCP server over stdio. Use this for Claude Desktop, Cursor, Codex,
+    and other MCP clients that launch a local command.
+
+  $ wf mcp --port 3399
+    Start an HTTP/SSE MCP server on localhost:3399 for clients that connect to a
+    running local server instead of spawning a command.
+
+  $ wf mcp --tools read,search,add
+    Expose only a smaller tool set. Tool names can be full names like
+    workflowy_read or short names like read, search, add.
+
+Stdio client config example:
+  {
+    "mcpServers": {
+      "workflowy": {
+        "command": "wf",
+        "args": ["mcp"]
+      }
+    }
+  }
+
+  If your MCP client does not inherit your shell PATH, run 'which wf' and use
+  that absolute path as the command instead.
+
+Suggested agent instruction:
+  Use the Workflowy MCP tools to read/search my outline before answering.
+  Prefer saved targets like @now, @youtube, and @inbox when relevant.
+  Propose edits before applying them unless I explicitly ask you to make changes.
+`)
     .action(async (opts: { port?: string; tools?: string }) => {
       const allowedTools = opts.tools ? new Set(opts.tools.split(",").map((t) => t.trim())) : null;
       const tools = allowedTools
