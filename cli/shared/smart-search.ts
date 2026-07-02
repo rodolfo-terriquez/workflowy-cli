@@ -30,26 +30,82 @@ function getRelaxedTerm(term: string): string {
   return term.slice(0, 4);
 }
 
+interface TermEvidence {
+  score: number;
+  matched: boolean;
+}
+
+function getWords(value: string): string[] {
+  return value.match(/[a-z0-9]+/g) ?? [];
+}
+
+function fuzzyDistanceLimit(term: string): number {
+  if (term.length <= 4) return 1;
+  if (term.length <= 8) return 2;
+  return 3;
+}
+
+function levenshteinDistance(a: string, b: string, maxDistance: number): number {
+  if (Math.abs(a.length - b.length) > maxDistance) return maxDistance + 1;
+
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  let current = new Array<number>(b.length + 1);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i;
+    let rowMin = current[0];
+
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(
+        previous[j]! + 1,
+        current[j - 1]! + 1,
+        previous[j - 1]! + cost,
+      );
+      rowMin = Math.min(rowMin, current[j]!);
+    }
+
+    if (rowMin > maxDistance) return maxDistance + 1;
+    [previous, current] = [current, previous];
+  }
+
+  return previous[b.length]!;
+}
+
+function scoreTerm(haystack: string, words: string[], term: string): TermEvidence {
+  if (haystack.includes(term)) {
+    return { score: 12, matched: true };
+  }
+
+  if (term.length < 3) {
+    return { score: 0, matched: false };
+  }
+
+  const maxDistance = fuzzyDistanceLimit(term);
+  let bestDistance = maxDistance + 1;
+
+  for (const word of words) {
+    const distance = levenshteinDistance(term, word, maxDistance);
+    if (distance < bestDistance) bestDistance = distance;
+    if (bestDistance === 0) break;
+  }
+
+  if (bestDistance <= maxDistance) {
+    return { score: Math.max(1, 10 - bestDistance), matched: true };
+  }
+
+  return { score: 0, matched: false };
+}
+
 function scoreCandidate(row: SearchResult, terms: string[]): number {
   const haystack = `${cleanHtml(row.name)} ${cleanHtml(row.note ?? "")}`.toLowerCase();
+  const words = getWords(haystack);
   let score = 0;
 
   for (const term of terms) {
-    if (haystack.includes(term)) {
-      score += 12;
-      continue;
-    }
-
-    const relaxedTerm = getRelaxedTerm(term);
-    if (relaxedTerm !== term && haystack.includes(relaxedTerm)) {
-      score += 6;
-    }
-
-    for (const trigram of getTrigrams(term)) {
-      if (haystack.includes(trigram)) {
-        score += 1;
-      }
-    }
+    const evidence = scoreTerm(haystack, words, term);
+    if (!evidence.matched) return 0;
+    score += evidence.score;
   }
 
   return score;
