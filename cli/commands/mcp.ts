@@ -1002,7 +1002,15 @@ function annotateCliExecutionResult(
   }
 }
 
+function getMcpExecutablePathForHelp(): string {
+  const execPath = process.execPath;
+  if (execPath && execPath !== "bun" && !execPath.endsWith("/bun")) return execPath;
+  return "wf";
+}
+
 export function registerMcp(program: Command): void {
+  const commandPath = getMcpExecutablePathForHelp();
+
   program
     .command("mcp")
     .description("Start as MCP server (stdio or HTTP/SSE transport)")
@@ -1027,14 +1035,11 @@ Stdio client config example:
   {
     "mcpServers": {
       "workflowy": {
-        "command": "wf",
+        "command": ${JSON.stringify(commandPath)},
         "args": ["mcp"]
       }
     }
   }
-
-  If your MCP client does not inherit your shell PATH, run 'which wf' and use
-  that absolute path as the command instead.
 
 Suggested agent instruction:
   Use the Workflowy MCP tools to read/search my outline before answering.
