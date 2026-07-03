@@ -30,7 +30,7 @@ export function registerTargets(program: Command): void {
               command: "targets",
               timestamp: new Date().toISOString(),
               account: config.activeAccount,
-              wf_version: "3.1.8",
+              wf_version: "3.1.9",
             },
             nodes: targets.map((t) => ({
               id: t.key,

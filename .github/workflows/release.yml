@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun test
+
+      - name: Build release binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          mkdir -p release
+
+          bun build --compile --target=bun-darwin-arm64 cli/wf.ts --outfile "release/wf-${version}-macos-arm64"
+          bun build --compile --target=bun-darwin-x64 cli/wf.ts --outfile "release/wf-${version}-macos-x64"
+          bun build --compile --target=bun-linux-x64-baseline cli/wf.ts --outfile "release/wf-${version}-linux-x64"
+          bun build --compile --target=bun-linux-arm64 cli/wf.ts --outfile "release/wf-${version}-linux-arm64"
+          bun build --compile --target=bun-windows-x64-baseline cli/wf.ts --outfile "release/wf-${version}-windows-x64.exe"
+          bun build --compile --target=bun-windows-arm64 cli/wf.ts --outfile "release/wf-${version}-windows-arm64.exe"
+
+          chmod +x release/wf-${version}-macos-* release/wf-${version}-linux-*
+
+      - name: Linux smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          "release/wf-${GITHUB_REF_NAME}-linux-x64" --version
+          "release/wf-${GITHUB_REF_NAME}-linux-x64" version
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum * > SHA256SUMS
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release/*

@@ -2,7 +2,9 @@
 
 This project currently ships GitHub releases first. npm distribution is deferred while `package.json` remains private.
 
-## Manual GitHub Release
+## GitHub Release
+
+Release assets are built automatically by `.github/workflows/release.yml` when a `v*` tag is pushed.
 
 1. Verify the working tree only contains intentional release changes.
 
@@ -31,15 +33,33 @@ This project currently ships GitHub releases first. npm distribution is deferred
 5. Create and push the release tag.
 
    ```bash
-   git tag v3.1.8
-   git push origin v3.1.8
+   git tag v3.1.9
+   git push origin v3.1.9
    ```
 
-6. Create a GitHub release for `v3.1.8`.
+6. The release workflow creates/updates the GitHub release and attaches:
 
-   - Use `CHANGELOG.md` as the release notes source.
-   - Attach `dist/wf`.
-   - Label the artifact clearly as macOS arm64 if it was built locally on Apple Silicon.
+   - `wf-vX.Y.Z-macos-arm64`
+   - `wf-vX.Y.Z-macos-x64`
+   - `wf-vX.Y.Z-linux-x64`
+   - `wf-vX.Y.Z-linux-arm64`
+   - `wf-vX.Y.Z-windows-x64.exe`
+   - `wf-vX.Y.Z-windows-arm64.exe`
+   - `SHA256SUMS`
+
+7. After the release publishes, test the public installers:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/rodolfo-terriquez/workflowy-cli/main/install.sh | bash
+   wf --version
+   ```
+
+   Windows PowerShell:
+
+   ```powershell
+   irm https://raw.githubusercontent.com/rodolfo-terriquez/workflowy-cli/main/install.ps1 | iex
+   wf --version
+   ```
 
 ## npm
 

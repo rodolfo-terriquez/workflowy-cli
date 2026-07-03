@@ -47,7 +47,7 @@ export function registerWebhook(program: Command): void {
       saveWebhooks(hooks);
 
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "webhook:create", wf_version: "3.1.8" }, webhook: hook }));
+        console.log(JSON.stringify({ meta: { command: "webhook:create", wf_version: "3.1.9" }, webhook: hook }));
       } else {
         console.log(`\n  ${chalk.green("✓")} Webhook ${chalk.cyan(id)} created → ${chalk.dim(opts.url)}\n`);
       }
@@ -60,7 +60,7 @@ export function registerWebhook(program: Command): void {
       const hooks = loadWebhooks();
 
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "webhook:list", wf_version: "3.1.8" }, webhooks: hooks, count: hooks.length }));
+        console.log(JSON.stringify({ meta: { command: "webhook:list", wf_version: "3.1.9" }, webhooks: hooks, count: hooks.length }));
         return;
       }
 
@@ -87,7 +87,7 @@ export function registerWebhook(program: Command): void {
       saveWebhooks(hooks);
 
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "webhook:delete", wf_version: "3.1.8" }, deleted: id }));
+        console.log(JSON.stringify({ meta: { command: "webhook:delete", wf_version: "3.1.9" }, deleted: id }));
       } else {
         console.log(`\n  ${chalk.red("✗")} Webhook ${chalk.cyan(id)} deleted.\n`);
       }
@@ -117,7 +117,7 @@ export function registerWebhook(program: Command): void {
         });
 
         if (isAgentMode()) {
-          console.log(JSON.stringify({ meta: { command: "webhook:test", wf_version: "3.1.8" }, status: res.status, ok: res.ok }));
+          console.log(JSON.stringify({ meta: { command: "webhook:test", wf_version: "3.1.9" }, status: res.status, ok: res.ok }));
         } else {
           if (res.ok) {
             console.log(`\n  ${chalk.green("✓")} Test sent to ${chalk.dim(hook.url)} — ${res.status}\n`);

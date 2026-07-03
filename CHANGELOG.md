@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.1.9 - 2026-07-02
+
+Patch release for easier installation.
+
+- Added one-line macOS/Linux and Windows installers that auto-detect OS and CPU architecture.
+- Added a tag-driven GitHub release workflow that builds prebuilt binaries for macOS, Linux, and Windows.
+- Updated installation and release documentation for binary-first installs.
+
 ## 3.1.8 - 2026-07-01
 
 Patch release for human-output readability.

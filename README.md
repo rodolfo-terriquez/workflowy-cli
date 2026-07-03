@@ -18,7 +18,7 @@ This project is WorkFlowy-native:
 
 ## Status
 
-Current version: `3.1.8`
+Current version: `3.1.9`
 
 Implemented today:
 
@@ -31,6 +31,39 @@ Implemented today:
 - compiled binary build via Bun
 
 ## Install
+
+### macOS and Linux
+
+Install the latest prebuilt binary with one command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rodolfo-terriquez/workflowy-cli/main/install.sh | bash
+```
+
+### Windows PowerShell
+
+```powershell
+irm https://raw.githubusercontent.com/rodolfo-terriquez/workflowy-cli/main/install.ps1 | iex
+```
+
+The installer auto-detects your OS and CPU architecture, downloads the matching GitHub release asset, installs `wf`, and adds it to your PATH when possible.
+
+Then authenticate and sync:
+
+```bash
+wf login
+wf cache:sync
+wf doctor
+```
+
+To install a specific version or custom location:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rodolfo-terriquez/workflowy-cli/main/install.sh | \
+  WF_VERSION=v3.1.9 WF_INSTALL_DIR="$HOME/.local/bin" bash
+```
+
+### Build from source
 
 Requires [Bun](https://bun.sh).
 
@@ -465,7 +498,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:read",
-    "wf_version": "3.1.8"
+    "wf_version": "3.1.9"
   },
   "node": {},
   "children": []
@@ -478,7 +511,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "search",
-    "wf_version": "3.1.8"
+    "wf_version": "3.1.9"
   },
   "nodes": []
 }
@@ -490,7 +523,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:add",
-    "wf_version": "3.1.8"
+    "wf_version": "3.1.9"
   },
   "message": "..."
 }
