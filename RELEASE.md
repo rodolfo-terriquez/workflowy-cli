@@ -33,8 +33,8 @@ Release assets are built automatically by `.github/workflows/release.yml` when a
 5. Create and push the release tag.
 
    ```bash
-   git tag v3.1.9
-   git push origin v3.1.9
+   git tag v3.1.10
+   git push origin v3.1.10
    ```
 
 6. The release workflow creates/updates the GitHub release and attaches:
@@ -50,14 +50,14 @@ Release assets are built automatically by `.github/workflows/release.yml` when a
 7. After the release publishes, test the public installers:
 
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/rodolfo-terriquez/workflowy-cli/main/install.sh | bash
+   curl -fsSL https://github.com/rodolfo-terriquez/workflowy-cli/releases/latest/download/install.sh | bash
    wf --version
    ```
 
    Windows PowerShell:
 
    ```powershell
-   irm https://raw.githubusercontent.com/rodolfo-terriquez/workflowy-cli/main/install.ps1 | iex
+   irm https://github.com/rodolfo-terriquez/workflowy-cli/releases/latest/download/install.ps1 | iex
    wf --version
    ```
 

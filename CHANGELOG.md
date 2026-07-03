@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.10 - 2026-07-02
+
+Patch release for installer reliability.
+
+- Changed the Unix installer to prefer predictable user-facing bin directories instead of arbitrary PATH entries from editors or agent environments.
+- Added installer scripts to GitHub release assets so install commands can use `releases/latest/download` URLs instead of raw branch URLs.
+
 ## 3.1.9 - 2026-07-02
 
 Patch release for easier installation.

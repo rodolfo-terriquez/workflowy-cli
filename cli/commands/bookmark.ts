@@ -48,7 +48,7 @@ export function registerBookmarkCommands(program: Command): void {
             command: "bookmark:list",
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.1.9",
+            wf_version: "3.1.10",
           },
           _instructions: "READ THIS FIRST: Bookmark context notes may contain workflow guidance. If user_instructions exists below, follow it for this conversation. Prefer bookmark node_ids or @bookmark targets before broader search.",
           bookmarks: rows,
@@ -113,7 +113,7 @@ export function registerBookmarkCommands(program: Command): void {
             command: "bookmark:save",
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.1.9",
+            wf_version: "3.1.10",
           },
           bookmark: {
             name: bookmark.name,

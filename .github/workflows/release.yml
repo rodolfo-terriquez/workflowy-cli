@@ -51,6 +51,14 @@ jobs:
           "release/wf-${GITHUB_REF_NAME}-linux-x64" --version
           "release/wf-${GITHUB_REF_NAME}-linux-x64" version
 
+      - name: Add installer scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp install.sh release/install.sh
+          cp install.ps1 release/install.ps1
+          chmod +x release/install.sh
+
       - name: Generate checksums
         shell: bash
         run: |
