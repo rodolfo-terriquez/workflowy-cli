@@ -11,21 +11,18 @@ choose_install_dir() {
     return
   fi
 
-  # Prefer a user-writable directory that is already on PATH so `wf` works immediately.
-  old_ifs="$IFS"
-  IFS=':'
-  for dir in $PATH; do
-    if [ -n "$dir" ] && [ -d "$dir" ] && [ -w "$dir" ]; then
-      case "$dir" in
-        "$HOME"/*|/usr/local/bin|/opt/homebrew/bin)
+  # Prefer predictable, user-facing bin directories that are already on PATH.
+  # Avoid arbitrary PATH entries from terminals, editors, or agent sandboxes.
+  for dir in "$HOME/.local/bin" "$HOME/bin" "/opt/homebrew/bin" "/usr/local/bin"; do
+    case ":$PATH:" in
+      *":$dir:"*)
+        if [ -d "$dir" ] && [ -w "$dir" ]; then
           printf '%s\n' "$dir"
-          IFS="$old_ifs"
           return
-          ;;
-      esac
-    fi
+        fi
+        ;;
+    esac
   done
-  IFS="$old_ifs"
 
   printf '%s\n' "$HOME/.local/bin"
 }
