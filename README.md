@@ -8,6 +8,34 @@
 
 `wf` is the WorkFlowy command-line and agent toolkit: a local-first CLI, cache, automation layer, and MCP server that lets humans, scripts, and AI agents safely read, search, organize, and edit a WorkFlowy account.
 
+## Install in one command
+
+### macOS and Linux
+
+Copy and paste this into your terminal:
+
+```bash
+curl -fsSL https://github.com/rodolfo-terriquez/workflowy-cli/releases/latest/download/install.sh | bash
+```
+
+### Windows PowerShell
+
+Copy and paste this into PowerShell:
+
+```powershell
+irm https://github.com/rodolfo-terriquez/workflowy-cli/releases/latest/download/install.ps1 | iex
+```
+
+Then connect your WorkFlowy account:
+
+```bash
+wf login
+wf cache:sync
+wf doctor
+```
+
+That’s it. The installer auto-detects your OS and CPU architecture, downloads the latest prebuilt binary, installs `wf`, and adds it to your PATH when possible.
+
 This project is WorkFlowy-native:
 
 - everything is a node in a single tree
@@ -30,31 +58,7 @@ Implemented today:
 - watch daemon, webhooks, workflows, MCP server
 - compiled binary build via Bun
 
-## Install
-
-### macOS and Linux
-
-Install the latest prebuilt binary with one command:
-
-```bash
-curl -fsSL https://github.com/rodolfo-terriquez/workflowy-cli/releases/latest/download/install.sh | bash
-```
-
-### Windows PowerShell
-
-```powershell
-irm https://github.com/rodolfo-terriquez/workflowy-cli/releases/latest/download/install.ps1 | iex
-```
-
-The installer auto-detects your OS and CPU architecture, downloads the matching GitHub release asset, installs `wf`, and adds it to your PATH when possible.
-
-Then authenticate and sync:
-
-```bash
-wf login
-wf cache:sync
-wf doctor
-```
+## Install details
 
 To install a specific version or custom location:
 
