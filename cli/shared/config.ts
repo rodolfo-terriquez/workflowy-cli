@@ -3,9 +3,12 @@ import { homedir } from "os";
 import { join } from "path";
 
 export interface LlmConfig {
+  provider?: string;
   model?: string;
   apiKey?: string;
+  baseUrl?: string;
   maxContextTokens?: number;
+  maxOutputTokens?: number;
 }
 
 export interface ApiRateLimitConfig {

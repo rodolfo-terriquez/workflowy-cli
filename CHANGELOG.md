@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.1.11 - 2026-07-07
+
+Patch release for configurable AI providers.
+
+- Added shared LLM provider support for OpenRouter, OpenAI-compatible chat completions endpoints, and Anthropic Messages API.
+- Reused the provider client across AI proposal generation and smart search.
+- Updated diagnostics and README examples for provider, base URL, API key, and model configuration.
+
 ## 3.1.10 - 2026-07-02
 
 Patch release for installer reliability.

@@ -7,6 +7,7 @@ import { getCacheNodeCount, getCacheAgeSeconds } from "../shared/cache.ts";
 import { isAgentMode } from "../agent.ts";
 import { join } from "path";
 import { getRuntimeVersionInfo } from "../shared/version.ts";
+import { describeLlmConfig } from "../shared/llm.ts";
 
 const VERSION = getRuntimeVersionInfo().appVersion;
 
@@ -230,12 +231,17 @@ export async function collectDoctorReport(): Promise<DoctorReport> {
 
   checks.push({ label: "FTS index present", ok: dbExists, detail: dbExists ? "yes" : "no" });
 
-  const llmModel = config.llm?.model ?? "google/gemini-flash-2.5";
+  const llmStatus = describeLlmConfig(config.llm);
   const llmKey = config.llm?.apiKey;
   checks.push({
     label: "LLM config",
-    ok: true,
-    detail: config.llm ? `configured (model: ${llmModel})` : `not configured (default model: ${llmModel})`,
+    ok: !llmStatus.error,
+    detail: llmStatus.error
+      ? llmStatus.error
+      : config.llm
+        ? `configured (provider: ${llmStatus.provider}, model: ${llmStatus.model})`
+        : `not configured (default provider: ${llmStatus.provider}, default model: ${llmStatus.model})`,
+    warn: !!llmStatus.error,
   });
   checks.push({
     label: "LLM API key",

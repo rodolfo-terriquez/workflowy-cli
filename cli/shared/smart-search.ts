@@ -2,6 +2,7 @@ import { getCacheDb, searchNodes, searchNodesByTrigram, type SearchResult, build
 import { cleanHtml } from "./nodes.ts";
 import { loadConfig, type LlmConfig } from "./config.ts";
 import { resolveCacheTargetReference } from "./path.ts";
+import { completeJson } from "./llm.ts";
 
 export interface SmartSearchResult extends SearchResult {
   match_type: "fts" | "fuzzy" | "smart";
@@ -253,7 +254,6 @@ export async function smartSearch(
 
   const config = loadConfig();
   const llmConfig: LlmConfig = config.llm ?? {};
-  const model = llmConfig.model ?? "google/gemini-flash-2.5";
   const apiKey = llmConfig.apiKey;
 
   if (!apiKey) {
@@ -273,32 +273,10 @@ Include both exact and conceptually related matches. Order by relevance.
 Return ONLY valid JSON.`;
 
   try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/rodolfo-terriquez/workflowy-cli",
-        "X-Title": "WorkFlowy CLI",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.1,
-      }),
+    const parsed = await completeJson<{ ids: string[] }>({
+      prompt,
+      maxOutputTokens: 1024,
     });
-
-    if (!response.ok) return candidates.slice(0, limit);
-
-    const data = await response.json() as {
-      choices: Array<{ message: { content: string } }>;
-    };
-
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return candidates.slice(0, limit);
-
-    const parsed = JSON.parse(content) as { ids: string[] };
     if (!Array.isArray(parsed.ids)) return candidates.slice(0, limit);
 
     const idSet = new Set(parsed.ids);

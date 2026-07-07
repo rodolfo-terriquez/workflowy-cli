@@ -2,6 +2,7 @@ import { loadConfig, type LlmConfig } from "./config.ts";
 import { getCacheDb, getNodeById, getChildren, buildBreadcrumbDisplay, getCacheNodeCount, type CachedNode } from "./cache.ts";
 import { cleanHtml, type FlatNode } from "./nodes.ts";
 import { resolveSavedTargetNodeId, resolveTarget } from "../targets.ts";
+import { completeJson } from "./llm.ts";
 
 export interface ProposalOperation {
   op: "move" | "complete" | "uncomplete" | "insert" | "update" | "delete";
@@ -63,15 +64,6 @@ export async function generateProposal(
 ): Promise<{ summary: string; operations: ProposalOperation[] }> {
   const config = loadConfig();
   const llmConfig: LlmConfig = config.llm ?? {};
-  const model = modelOverride ?? llmConfig.model ?? "google/gemini-flash-2.5";
-  const apiKey = llmConfig.apiKey;
-
-  if (!apiKey) {
-    throw new Error(
-      "No LLM API key configured. Run: wf config set llm.apiKey <your-openrouter-key>"
-    );
-  }
-
   const context = gatherContext(instruction);
   const maxTokens = llmConfig.maxContextTokens ?? 2000;
   const truncatedContext = context.length > maxTokens * 4
@@ -83,41 +75,14 @@ export async function generateProposal(
 Current WorkFlowy context:
 ${truncatedContext}`;
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://github.com/rodolfo-terriquez/workflowy-cli",
-      "X-Title": "WorkFlowy CLI",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`LLM API call failed (${response.status}): ${body}`);
-  }
-
-  const data = await response.json() as {
-    choices: Array<{ message: { content: string } }>;
-  };
-
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error("LLM returned empty response");
-
-  const parsed = JSON.parse(content) as {
+  const parsed = await completeJson<{
     summary: string;
     operations: ProposalOperation[];
-  };
+  }>({
+    system: SYSTEM_PROMPT,
+    prompt: userPrompt,
+    modelOverride,
+  });
 
   if (!parsed.summary || !Array.isArray(parsed.operations)) {
     throw new Error("LLM response missing required fields (summary, operations)");

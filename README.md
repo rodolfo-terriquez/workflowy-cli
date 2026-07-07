@@ -46,7 +46,7 @@ This project is WorkFlowy-native:
 
 ## Status
 
-Current version: `3.1.10`
+Current version: `3.1.11`
 
 Implemented today:
 
@@ -64,7 +64,7 @@ To install a specific version or custom location:
 
 ```bash
 curl -fsSL https://github.com/rodolfo-terriquez/workflowy-cli/releases/latest/download/install.sh | \
-  WF_VERSION=v3.1.10 WF_INSTALL_DIR="$HOME/.local/bin" bash
+  WF_VERSION=v3.1.11 WF_INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
 ### Build from source
@@ -406,6 +406,21 @@ wf config:set llm.apiKey <openrouter-key>
 wf config:set llm.model google/gemini-flash-2.5
 ```
 
+Other providers:
+
+```bash
+# Any OpenAI-compatible chat-completions provider
+wf config:set llm.provider openai-compatible
+wf config:set llm.baseUrl https://api.openai.com/v1
+wf config:set llm.apiKey <provider-key>
+wf config:set llm.model <model-id>
+
+# Anthropic Messages API
+wf config:set llm.provider anthropic
+wf config:set llm.apiKey <anthropic-key>
+wf config:set llm.model <claude-model-id>
+```
+
 ## Automation and Integration
 
 ### Watch daemon
@@ -502,7 +517,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:read",
-    "wf_version": "3.1.10"
+    "wf_version": "3.1.11"
   },
   "node": {},
   "children": []
@@ -515,7 +530,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "search",
-    "wf_version": "3.1.10"
+    "wf_version": "3.1.11"
   },
   "nodes": []
 }
@@ -527,7 +542,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:add",
-    "wf_version": "3.1.10"
+    "wf_version": "3.1.11"
   },
   "message": "..."
 }
@@ -552,9 +567,12 @@ Config is stored under `~/.workflowy/config.json`.
 Common keys:
 
 ```bash
+wf config:get llm.provider
 wf config:get llm.model
+wf config:set llm.provider openrouter
 wf config:set llm.model google/gemini-flash-2.5
 wf config:set llm.apiKey <key>
+wf config:set llm.baseUrl <openai-compatible-base-url>
 ```
 
 Aliases:
