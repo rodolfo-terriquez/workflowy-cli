@@ -100,7 +100,7 @@ async function readLive(
       timestamp: new Date().toISOString(),
       account: config.activeAccount,
       source: "live",
-      wf_version: "3.1.11",
+      wf_version: "3.2.0",
     };
 
     const output: Record<string, unknown> = {
@@ -239,7 +239,7 @@ function readFromCache(
       source: "cache",
       cache_age_seconds: cacheAge,
       cache_stale: stale,
-      wf_version: "3.1.11",
+      wf_version: "3.2.0",
     };
 
     const output: Record<string, unknown> = {

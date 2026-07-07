@@ -14,7 +14,7 @@ export function registerConfigCommands(program: Command): void {
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "config:get", wf_version: "3.1.11" },
+          meta: { command: "config:get", wf_version: "3.2.0" },
           key,
           value: value ?? null,
         }));
@@ -33,7 +33,7 @@ export function registerConfigCommands(program: Command): void {
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "config:set", wf_version: "3.1.11" },
+          meta: { command: "config:set", wf_version: "3.2.0" },
           key,
           value,
           status: "ok",
@@ -60,7 +60,7 @@ export function registerConfigCommands(program: Command): void {
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "config:alias set", wf_version: "3.1.11" },
+          meta: { command: "config:alias set", wf_version: "3.2.0" },
           alias: name,
           expansion,
           status: "ok",
@@ -79,7 +79,7 @@ export function registerConfigCommands(program: Command): void {
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "config:alias list", wf_version: "3.1.11" },
+          meta: { command: "config:alias list", wf_version: "3.2.0" },
           aliases,
         }));
         return;
@@ -112,7 +112,7 @@ export function registerConfigCommands(program: Command): void {
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "config:alias remove", wf_version: "3.1.11" },
+          meta: { command: "config:alias remove", wf_version: "3.2.0" },
           alias: name,
           status: "removed",
         }));

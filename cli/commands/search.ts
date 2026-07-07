@@ -197,7 +197,7 @@ function outputResults(
           cache_age_seconds: cacheAge,
           cache_stale: isCacheStale(),
           smart_search_available: !!config.llm?.apiKey,
-          wf_version: "3.1.11",
+          wf_version: "3.2.0",
         },
         nodes: results.map((r) => ({
           id: r.id,

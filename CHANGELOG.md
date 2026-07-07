@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.1.11 - 2026-07-07
+## 3.2.0 - 2026-07-07
 
 Patch release for configurable AI providers.
 
