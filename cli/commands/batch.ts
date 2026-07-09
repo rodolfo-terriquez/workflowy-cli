@@ -271,7 +271,7 @@ function printBatchError(error: unknown): never {
 export function registerBatch(program: Command): void {
   program
     .command("batch")
-    .description("Execute a JSON array of operations from stdin")
+    .description("Execute flat grouped operations from stdin")
     .action(async () => {
       const token = requireToken();
       const api = new WorkflowyAPI(token);
@@ -343,7 +343,7 @@ export function registerBatch(program: Command): void {
       }
 
       console.log(JSON.stringify({
-        meta: { command: "batch", timestamp: new Date().toISOString(), wf_version: "3.2.0" },
+        meta: { command: "batch", timestamp: new Date().toISOString(), wf_version: "3.2.1" },
         success: !hadFailures,
         results,
         total_operations: ops.length,

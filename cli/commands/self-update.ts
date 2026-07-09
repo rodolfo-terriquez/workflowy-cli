@@ -182,7 +182,7 @@ function emitStatus(info: {
 }): void {
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "self:update", mode: "check", wf_version: "3.2.0" },
+      meta: { command: "self:update", mode: "check", wf_version: "3.2.1" },
       ...info,
     }, null, 2));
     return;
@@ -211,7 +211,7 @@ function emitUpdated(info: {
 }): void {
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "self:update", wf_version: "3.2.0" },
+      meta: { command: "self:update", wf_version: "3.2.1" },
       ...info,
       updated: info.beforeHead !== info.afterHead,
     }, null, 2));

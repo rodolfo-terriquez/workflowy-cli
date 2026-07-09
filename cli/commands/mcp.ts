@@ -56,10 +56,11 @@ Before making tool calls, follow this checklist:
 2. Prefer \`workflowy_targets\` and/or \`bookmarks\` early when you need to discover saved locations, bookmarks, or user guidance.
 3. Prefer \`@targets\`, bookmarks, and cached paths before asking for or relying on raw node IDs.
 4. Use \`read\` or \`workflowy_context\` before structural or destructive changes when surrounding context matters.
-5. Use \`workflowy_batch\` for grouped common changes. Markdown-style text in \`text\` is converted to Workflowy rich text, including common inline formatting and leading markers like \`##\` or \`[ ]\`.
-6. Use \`edit_doc\` only when you need advanced structured edits such as nested inserts, insert-after, richer line types, layout changes, or old local-MCP-style raw operations.
-7. Under normal conditions the MCP server auto-refreshes the local cache when it is empty, stale, or a cache-backed lookup appears out of date. Use \`sync\` only if that automatic refresh fails or you need to force it.
-8. If the user shares a WorkFlowy link, extract the hex ID after \`#/\` and use that as the node ID.
+5. Prefer \`edit_doc\` for creating or replacing a nested outline in one call. WorkFlowy content usually belongs in child bullets via nested \`items[].c\`; use notes mostly for metadata or true note fields.
+6. Use \`workflowy_batch\` for flat grouped common changes such as several adds, moves, completes, or deletes. Markdown-style text in \`text\` is converted to Workflowy rich text, but it is not expanded into nested child bullets.
+7. Use \`edit_doc\` for structured edits such as nested inserts, insert-after, richer line types, layout changes, updates, moves, and deletes.
+8. Under normal conditions the MCP server auto-refreshes the local cache when it is empty, stale, or a cache-backed lookup appears out of date. Use \`sync\` only if that automatic refresh fails or you need to force it.
+9. If the user shares a WorkFlowy link, extract the hex ID after \`#/\` and use that as the node ID.
 
 ## Key Concepts
 
@@ -74,10 +75,11 @@ Before making tool calls, follow this checklist:
 - To inspect a subtree: use \`read\`.
 - To understand a node in context: use \`workflowy_context\`.
 - To find something by text: use \`workflowy_search\`.
-- To add a new node: use \`workflowy_add\`.
+- To add one simple node: use \`workflowy_add\`.
+- To write an outline with sections, subpoints, or multiple related bullets: prefer \`edit_doc\` with nested \`items[].c\` so the result matches WorkFlowy's outline structure.
 - To rename or change a note: use \`workflowy_update\`.
 - To move, complete, or delete multiple things together: prefer \`workflowy_batch\`.
-- To perform advanced raw structured edits: use \`edit_doc\`.
+- To perform structured document edits: use \`edit_doc\`.
 
 ## Common Mistakes to Avoid
 
@@ -85,8 +87,9 @@ Before making tool calls, follow this checklist:
 - Do not search for or create date nodes by plain text when a built-in calendar target such as \`@today\`, \`@tomorrow\`, \`@calendar\`, or \`@next-week\` will do.
 - Do not guess between ambiguous matches; ask or disambiguate.
 - Do not split one logical item into many add operations unless you want separate nodes.
+- Do not put normal outline body text into notes just to avoid creating children; use nested bullets with \`edit_doc\`.
 - Do not use raw node IDs when a stable target or cached path is available.
-- Do not make multiple write calls when one batch call will do.
+- Do not make multiple write calls when one \`edit_doc\` or \`workflowy_batch\` call will do.
 
 ## Tips
 
@@ -240,28 +243,28 @@ const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "workflowy_add",
-    description: "Add a new node",
+    description: "Add one simple node. For nested outlines or multi-section content, prefer edit_doc with nested items[].c.",
     inputSchema: {
       type: "object",
       properties: {
-        text: { type: "string", description: "Node text" },
+        text: { type: "string", description: "Node text. Multiline or indented markdown is stored as this node's text; it is not expanded into child bullets." },
         to: { type: "string", description: "Target parent", default: "@inbox" },
         type: { type: "string", enum: ["bullet", "todo", "h1", "h2", "h3"], default: "bullet" },
-        note: { type: "string", description: "Note content" },
+        note: { type: "string", description: "Optional note content, best for metadata or true note fields. Use child bullets for normal outline body text." },
       },
       required: ["text"],
     },
   },
   {
     name: "add",
-    description: "Add a new node (short alias of workflowy_add)",
+    description: "Add one simple node (short alias of workflowy_add). For nested outlines, prefer edit_doc.",
     inputSchema: {
       type: "object",
       properties: {
-        text: { type: "string", description: "Node text" },
+        text: { type: "string", description: "Node text. Multiline or indented markdown is stored as this node's text; it is not expanded into child bullets." },
         to: { type: "string", description: "Target parent", default: "@inbox" },
         type: { type: "string", enum: ["bullet", "todo", "h1", "h2", "h3"], default: "bullet" },
-        note: { type: "string", description: "Note content" },
+        note: { type: "string", description: "Optional note content, best for metadata or true note fields. Use child bullets for normal outline body text." },
       },
       required: ["text"],
     },
@@ -361,7 +364,7 @@ const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "edit_doc",
-    description: "Advanced structured document edit. This is the parity escape hatch for agents that need old local-MCP-style operations: nested inserts, insert-after, richer line types, updates, moves, and deletes.",
+    description: "Structured document edit. Prefer this for nested outline writes: create sections, bullets, and sub-bullets in one call using items[].c. Also supports insert-after, richer line types, updates, moves, and deletes.",
     inputSchema: {
       type: "object",
       properties: {
@@ -371,7 +374,7 @@ const MCP_TOOLS: McpTool[] = [
         },
         operations: {
           type: "array",
-          description: "Array of structured edit operations. Supports insert/update/delete/move with nested item trees.",
+          description: "Array of structured edit operations. Prefer insert with nested item trees for outline-shaped content; child bullets go in c.",
           items: {
             type: "object",
             properties: {
@@ -380,15 +383,15 @@ const MCP_TOOLS: McpTool[] = [
               after: { type: "string", description: "For insert: sibling node ID/target to insert after." },
               items: {
                 type: "array",
-                description: "For insert: nodes to create. Children can be nested with c.",
+                description: "For insert: nodes to create. Use c for children and deeper outline nesting instead of stuffing body text into notes.",
                 items: {
                   type: "object",
                   properties: {
                     n: { type: "string", description: "Node text" },
-                    d: { type: "string", description: "Optional note" },
+                    d: { type: "string", description: "Optional note, best for metadata or true note fields" },
                     l: { type: "string", enum: ["todo", "h1", "h2", "h3", "p", "bullets", "code", "quote", "table"], description: "Line/layout type" },
                     x: { type: "number", enum: [0, 1], description: "Completion status (1 = complete)" },
-                    c: { type: "array", description: "Nested child items" },
+                    c: { type: "array", description: "Nested child items. Use this for Workflowy outline structure." },
                   },
                   required: ["n"],
                 },
@@ -416,12 +419,12 @@ const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "workflowy_edit_doc",
-    description: "Alias of edit_doc for advanced structured document edits.",
+    description: "Alias of edit_doc for structured nested outline edits.",
     inputSchema: {
       type: "object",
       properties: {
         root: { type: "string", description: "The subtree root: @target, path, node ID, or cached target." },
-        operations: { type: "array", description: "Array of structured edit operations." },
+        operations: { type: "array", description: "Array of structured edit operations. Prefer nested item trees for outline-shaped content." },
       },
       required: ["root", "operations"],
     },
@@ -534,13 +537,13 @@ const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "workflowy_batch",
-    description: "Execute multiple operations in a batch. Markdown-style text is converted to Workflowy rich text on write; do not split one logical item into one op per line unless you want separate nodes.",
+    description: "Execute flat grouped operations in a batch. Markdown-style text is converted to Workflowy rich text on write, but nested outlines should use edit_doc with items[].c.",
     inputSchema: {
       type: "object",
       properties: {
         ops: {
           type: "array",
-          description: "Array of operations. Add text can use Markdown-style formatting that will be converted on write.",
+          description: "Array of flat operations. Add text can use Markdown-style formatting that will be converted on write; use edit_doc for nested child bullets.",
           items: {
             type: "object",
             properties: {
@@ -551,7 +554,7 @@ const MCP_TOOLS: McpTool[] = [
               },
               text: {
                 type: "string",
-                description: "Text for add/capture. Common Markdown-style formatting is converted to Workflowy rich text on write.",
+                description: "Text for add/capture. Common Markdown-style formatting is converted to Workflowy rich text on write, but indented markdown is not expanded into children.",
               },
               to: {
                 type: "string",
@@ -572,7 +575,7 @@ const MCP_TOOLS: McpTool[] = [
               },
               note: {
                 type: "string",
-                description: "Optional note content for add/capture.",
+                description: "Optional note content for add/capture. Prefer child bullets for normal outline body text.",
               },
               position: {
                 type: "string",
@@ -589,13 +592,13 @@ const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "batch",
-    description: "Execute multiple operations in a batch (short alias of workflowy_batch)",
+    description: "Execute flat grouped operations in a batch (short alias of workflowy_batch). Use edit_doc for nested outlines.",
     inputSchema: {
       type: "object",
       properties: {
         ops: {
           type: "array",
-          description: "Array of operations. Add text can use Markdown-style formatting that will be converted on write.",
+          description: "Array of flat operations. Add text can use Markdown-style formatting that will be converted on write; use edit_doc for nested child bullets.",
           items: {
             type: "object",
             properties: {
@@ -606,7 +609,7 @@ const MCP_TOOLS: McpTool[] = [
               },
               text: {
                 type: "string",
-                description: "Text for add/capture. Common Markdown-style formatting is converted to Workflowy rich text on write.",
+                description: "Text for add/capture. Common Markdown-style formatting is converted to Workflowy rich text on write, but indented markdown is not expanded into children.",
               },
               to: {
                 type: "string",
@@ -627,7 +630,7 @@ const MCP_TOOLS: McpTool[] = [
               },
               note: {
                 type: "string",
-                description: "Optional note content for add/capture.",
+                description: "Optional note content for add/capture. Prefer child bullets for normal outline body text.",
               },
               position: {
                 type: "string",
@@ -1281,7 +1284,7 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
       result: {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "workflowy", version: "3.2.0" },
+        serverInfo: { name: "workflowy", version: "3.2.1" },
         instructions,
       },
     };

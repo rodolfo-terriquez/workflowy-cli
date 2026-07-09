@@ -298,11 +298,14 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
     expect(response.jsonrpc).toBe("2.0");
     expect(response.id).toBe(1);
     expect(response.result.protocolVersion).toBe("2024-11-05");
-    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.2.0" });
+    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.2.1" });
     expect(response.result.capabilities).toEqual({ tools: {} });
     expect(response.result.instructions).toContain("## STOP — Read This First");
     expect(response.result.instructions).toContain("workflowy_targets");
     expect(response.result.instructions).toContain("workflowy_batch");
+    expect(response.result.instructions).toContain("Prefer `edit_doc` for creating or replacing a nested outline in one call");
+    expect(response.result.instructions).toContain("use notes mostly for metadata or true note fields");
+    expect(response.result.instructions).toContain("it is not expanded into nested child bullets");
     expect(response.result.instructions).toContain("@today");
     expect(response.result.instructions).toContain("<time startYear=\"2026\" startMonth=\"6\" startDay=\"3\">Jun 3, 2026</time>");
     expect(response.result.instructions).toContain("auto-refreshes the local cache");
@@ -431,7 +434,7 @@ test("responds to content-length framed initialize messages over stdio", async (
   });
 });
 
-test("tools/list explains that workflowy_batch add text is converted from markdown-style formatting", async () => {
+test("tools/list explains nested outline writes and batch markdown limits", async () => {
   await withTempWorkflowyConfig(async (configDir) => {
     const message = JSON.stringify({
       jsonrpc: "2.0",
@@ -461,12 +464,13 @@ test("tools/list explains that workflowy_batch add text is converted from markdo
     const batchTool = response.result.tools.find((tool) => tool.name === "workflowy_batch");
     expect(batchTool).toBeDefined();
     expect(batchTool?.description).toContain("Markdown-style text is converted to Workflowy rich text");
-    expect(batchTool?.inputSchema.properties?.ops?.description).toContain("Markdown-style formatting");
+    expect(batchTool?.description).toContain("nested outlines should use edit_doc");
+    expect(batchTool?.inputSchema.properties?.ops?.description).toContain("use edit_doc for nested child bullets");
 
     const editDocTool = response.result.tools.find((tool) => tool.name === "edit_doc");
     expect(editDocTool).toBeDefined();
-    expect(editDocTool?.description).toContain("Advanced structured document edit");
-    expect(editDocTool?.inputSchema.properties?.operations?.description).toContain("structured edit operations");
+    expect(editDocTool?.description).toContain("Prefer this for nested outline writes");
+    expect(editDocTool?.inputSchema.properties?.operations?.description).toContain("Prefer insert with nested item trees");
   });
 });
 

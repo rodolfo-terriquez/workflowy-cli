@@ -91,7 +91,7 @@ function printColoredHelp(): void {
       title: "Node",
       commands: [
         ["read [target]",              "Read a node and its children (full: node:read)"],
-        ["add <target> <text>",        "Add a child node to a target (full: node:add)"],
+        ["add <target> <text>",        "Add one child node to a target (full: node:add)"],
         ["move <node> <target>",       "Move a node to a different parent (full: node:move)"],
         ["complete <node>",            "Mark a todo as complete (--undo to uncheck)"],
         ["update <node>",              "Rename a node or edit its note"],
@@ -102,7 +102,7 @@ function printColoredHelp(): void {
         ["bulk <op>",                  "Bulk operations (complete|move|delete)"],
         ["template <action>",          "Save/apply node templates"],
         ["export <target>",            "Export a subtree (outline, JSON, markdown)"],
-        ["doc:edit <root>",            "Advanced structured edit operations"],
+        ["doc:edit <root>",            "Write nested outline edits in one API call"],
       ],
     },
     {
@@ -162,7 +162,7 @@ function printColoredHelp(): void {
     {
       title: "Utilities",
       commands: [
-        ["batch",                      "Execute a JSON array of ops from stdin"],
+        ["batch",                      "Execute flat grouped ops from stdin"],
         ["version",                    "Show CLI version and git revision"],
         ["login [apiKey]",             "Authenticate with WorkFlowy"],
         ["status",                     "Diagnose common setup issues (alias: doctor)"],

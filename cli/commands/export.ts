@@ -56,7 +56,7 @@ export function registerExport(program: Command): void {
                   resolved_id: resolved.id,
                   timestamp: new Date().toISOString(),
                   account: config.activeAccount,
-                  wf_version: "3.2.0",
+                  wf_version: "3.2.1",
                 },
               node: {
                 id: node.id,

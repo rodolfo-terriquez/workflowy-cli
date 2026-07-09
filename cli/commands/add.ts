@@ -15,9 +15,9 @@ export function registerNodeAdd(program: Command): void {
   program
     .command("node:add <target> <text>")
     .alias("add")
-    .description("Add a child node to a target")
+    .description("Add one child node to a target")
     .option("--type <type>", "Node layout (bullet|todo|h1|h2|h3)", "bullet")
-    .option("--note <note>", "Note content for the node")
+    .option("--note <note>", "Note content for the node; prefer child bullets for outline body text")
     .option("--position <pos>", "Position: top or bottom", "bottom")
     .option("--after <nodeId>", "Insert after this sibling node")
     .option("--format <type>", "Output format (outline|json)")

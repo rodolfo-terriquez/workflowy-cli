@@ -101,7 +101,7 @@ function printReplHelp(): void {
   console.log(dim("\n  Common commands:\n"));
   const rows: Array<[string, string]> = [
     ["read @demo --depth 2", "Read a node and its children"],
-    ["add @inbox \"Quick note\"", "Add a child node"],
+    ["add @inbox \"Quick note\"", "Add one child node"],
     ["search video --target @youtube", "Search, optionally scoped to a subtree"],
     ["find \"Project name\"", "Find nodes by name or path"],
     ["todos --target @today", "List open todos"],

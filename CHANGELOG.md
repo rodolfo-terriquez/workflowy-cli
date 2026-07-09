@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.2.1 - 2026-07-09
+
+Patch release for agent-facing outline write guidance.
+
+- Clarified MCP and CLI guidance so agents prefer `edit_doc` / `doc:edit` for nested WorkFlowy outline writes, reserve notes for metadata or true note fields, and treat `batch` as the flat grouped-operation path.
+
 ## 3.2.0 - 2026-07-07
 
 Patch release for configurable AI providers.

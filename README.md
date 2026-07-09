@@ -46,7 +46,7 @@ This project is WorkFlowy-native:
 
 ## Status
 
-Current version: `3.2.0`
+Current version: `3.2.1`
 
 Implemented today:
 
@@ -64,7 +64,7 @@ To install a specific version or custom location:
 
 ```bash
 curl -fsSL https://github.com/rodolfo-terriquez/workflowy-cli/releases/latest/download/install.sh | \
-  WF_VERSION=v3.2.0 WF_INSTALL_DIR="$HOME/.local/bin" bash
+  WF_VERSION=v3.2.1 WF_INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
 ### Build from source
@@ -126,7 +126,7 @@ For agent workflows:
 ```bash
 wf search "project roadmap" --agent
 wf node:read @today --depth 3 --agent
-wf batch < ops.json
+wf doc:edit @inbox < nested-outline.json --agent
 ```
 
 ## Command Surface
@@ -256,12 +256,14 @@ wf node:bulk complete --filter "type:todo completed:false" --target @today
 wf node:bulk move --filter "tag:#archive" --to @inbox --dry-run
 ```
 
-### Advanced structured edits
+### Nested outline edits
 
-Use `batch` for common agent operations. Use `doc:edit` when an agent needs full structured edit control compatible with the older local MCP `edit_doc` tool: nested inserts, `after`, richer line types, layout changes, updates, moves, and deletes.
+WorkFlowy is an outline, so content that has sections, subpoints, or related bullets should usually be written as child nodes, not packed into notes. Use notes for metadata or true note fields. For nested outline content, prefer `doc:edit` with nested `c` children; it creates the whole shape in one API call and maps directly to the MCP `edit_doc` tool.
+
+Use `batch` for flat grouped operations such as several independent adds, moves, completes, or deletes. `batch` converts Markdown-style text to WorkFlowy rich text, but it does not expand indented markdown into child bullets.
 
 ```bash
-cat > ops.json <<'JSON'
+cat > nested-outline.json <<'JSON'
 [
   {
     "op": "insert",
@@ -271,8 +273,20 @@ cat > ops.json <<'JSON'
         "n": "Project brief",
         "l": "h2",
         "c": [
-          { "n": "Draft outline", "l": "todo", "x": 0 },
-          { "n": "Notes", "d": "created by wf doc:edit" }
+          {
+            "n": "Draft outline",
+            "c": [
+              { "n": "Problem" },
+              { "n": "Proposed approach" },
+              { "n": "Open questions" }
+            ]
+          },
+          {
+            "n": "Source links",
+            "c": [
+              { "n": "https://workflowy.com" }
+            ]
+          }
         ]
       }
     ],
@@ -281,11 +295,11 @@ cat > ops.json <<'JSON'
 ]
 JSON
 
-wf doc:edit @inbox < ops.json
-wf doc:edit @inbox < ops.json --agent
+wf doc:edit @inbox < nested-outline.json
+wf doc:edit @inbox < nested-outline.json --agent
 ```
 
-For simple grouped changes, prefer `wf batch`; it has a smaller schema and is easier for most agents to use safely.
+`doc:edit` also supports insert-after, richer line types, layout changes, updates, moves, and deletes.
 
 ### Batch mode
 
@@ -475,7 +489,7 @@ MCP client config example:
 
 Run `wf login` and `wf cache:sync` first. The MCP server uses the same local config and cache as the CLI.
 
-MCP exposes friendly tools for common tasks (`read`, `search`, `add`, `batch`) plus `edit_doc` for advanced structured edits. `edit_doc` maps back to the CLI `doc:edit` command, so the CLI remains the canonical implementation.
+MCP exposes friendly tools for common tasks (`read`, `search`, `add`, `batch`) plus `edit_doc` for structured nested outline edits. Prefer `edit_doc` when writing sections, subpoints, or multi-bullet content; use `batch` for flat grouped changes. `edit_doc` maps back to the CLI `doc:edit` command, so the CLI remains the canonical implementation.
 
 #### MCP instructions
 
@@ -517,7 +531,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:read",
-    "wf_version": "3.2.0"
+    "wf_version": "3.2.1"
   },
   "node": {},
   "children": []
@@ -530,7 +544,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "search",
-    "wf_version": "3.2.0"
+    "wf_version": "3.2.1"
   },
   "nodes": []
 }
@@ -542,7 +556,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:add",
-    "wf_version": "3.2.0"
+    "wf_version": "3.2.1"
   },
   "message": "..."
 }

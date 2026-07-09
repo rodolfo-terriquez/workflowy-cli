@@ -251,7 +251,7 @@ export function registerDocEdit(program: Command): void {
   program
     .command("doc:edit <root> [operationsJson]")
     .alias("edit-doc")
-    .description("Advanced structured document edit (raw LLM doc operations)")
+    .description("Structured document edit for nested outline writes and raw LLM doc operations")
     .option("--format <type>", "Output format (outline|json)")
     .action(async (root: string, operationsJson: string | undefined, opts: { format?: string }) => {
       try {
@@ -275,7 +275,7 @@ export function registerDocEdit(program: Command): void {
             operation_count: operations.length,
             operation_types: Array.from(new Set(operations.map((op) => op.op))),
             timestamp: new Date().toISOString(),
-            wf_version: "3.2.0",
+            wf_version: "3.2.1",
           },
           success: true,
           message: `Applied ${operations.length} operation${operations.length === 1 ? "" : "s"} to ${resolvedRoot}`,
