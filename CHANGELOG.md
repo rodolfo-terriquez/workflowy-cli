@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.2.2 - 2026-07-09
+
+Maintenance and security hardening release.
+
+- Secured MCP HTTP mode with loopback-only binding, origin validation, optional bearer authentication, and enforced tool allowlists.
+- Hardened API-key storage and input with private permissions, atomic config writes, hidden login input, stdin support, and secret redaction.
+- Fixed compiled workflow, watch, and sync-daemon self-invocation and made workflow failures return non-zero status.
+- Added destructive bulk-delete guards, ambiguity-safe path resolution, network timeouts, checksum-verifying installers, cross-platform CI, and release-version checks.
+
 ## 3.2.1 - 2026-07-09
 
 Patch release for agent-facing outline write guidance.

@@ -42,6 +42,7 @@ need_cmd() {
 
 need_cmd curl
 need_cmd uname
+need_cmd awk
 
 os="$(uname -s)"
 arch="$(uname -m)"
@@ -80,13 +81,37 @@ fi
 
 asset="wf-${VERSION}-${platform}-${cpu}${ext}"
 download_url="https://github.com/$REPO/releases/download/$VERSION/$asset"
+checksums_url="https://github.com/$REPO/releases/download/$VERSION/SHA256SUMS"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
 tmp_file="$tmp_dir/$asset"
+checksums_file="$tmp_dir/SHA256SUMS"
 
 info "Downloading $asset"
 curl -fL --progress-bar "$download_url" -o "$tmp_file"
+
+info "Verifying SHA-256 checksum"
+curl -fsSL "$checksums_url" -o "$checksums_file"
+expected_checksum="$(awk -v asset="$asset" '$2 == asset { print $1; exit }' "$checksums_file")"
+if [ -z "$expected_checksum" ]; then
+  err "No checksum found for $asset in SHA256SUMS."
+  exit 1
+fi
+
+case "$os" in
+  Darwin) actual_checksum="$(shasum -a 256 "$tmp_file" | awk '{ print $1 }')" ;;
+  *)
+    need_cmd sha256sum
+    actual_checksum="$(sha256sum "$tmp_file" | awk '{ print $1 }')"
+    ;;
+esac
+
+if [ "$actual_checksum" != "$expected_checksum" ]; then
+  err "Checksum verification failed for $asset."
+  exit 1
+fi
+
 chmod +x "$tmp_file"
 
 mkdir -p "$INSTALL_DIR"

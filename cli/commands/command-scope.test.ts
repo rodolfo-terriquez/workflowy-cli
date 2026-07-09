@@ -202,7 +202,7 @@ test("doctor treats missing optional LLM key as warning when core setup is ready
     expect(llmKeyCheck).toMatchObject({
       ok: true,
       warn: true,
-      detail: "missing — set with `wf config:set llm.apiKey <key>`",
+      detail: "missing — set securely with `printf %s \"$LLM_API_KEY\" | wf config:set llm.apiKey --stdin`",
     });
     expect(report.suggested_actions).toEqual([]);
   } finally {
@@ -375,9 +375,66 @@ test("node:delete requires --yes in non-interactive mode", async () => {
   expect(result.stderr).toContain("--yes");
 });
 
+test("bulk delete requires an explicit scope and confirmation", async () => {
+  const unscoped = await runCli(["--agent", "bulk", "delete"]);
+  expect(unscoped.exitCode).toBe(1);
+  expect(JSON.parse(unscoped.stdout).error.code).toBe("scope_required");
+
+  const unconfirmed = await runCli(["--agent", "bulk", "delete", "--target", "@inbox"]);
+  expect(unconfirmed.exitCode).toBe(1);
+  expect(JSON.parse(unconfirmed.stdout).error.code).toBe("confirmation_required");
+});
+
+test("config:get redacts sensitive values by default", async () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: { default: { name: "default", token: "secret-token" } },
+    llm: { apiKey: "secret-llm-key" },
+  });
+
+  const result = await runCli(["--agent", "config:get", "llm.apiKey"]);
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout).value).toBe("[redacted]");
+  expect(result.stdout).not.toContain("secret-llm-key");
+
+  const parentResult = await runCli(["--agent", "config:get", "llm"]);
+  expect(JSON.parse(parentResult.stdout).value.apiKey).toBe("[redacted]");
+  expect(parentResult.stdout).not.toContain("secret-llm-key");
+});
+
+test("config:set accepts secret values from stdin without echoing them", async () => {
+  const result = await runCli(
+    ["--agent", "config:set", "llm.apiKey", "--stdin"],
+    {},
+    "secret-from-stdin\n",
+  );
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout).value).toBe("[redacted]");
+  expect(result.stdout).not.toContain("secret-from-stdin");
+  expect(configModule.loadConfig().llm?.apiKey).toBe("secret-from-stdin");
+});
+
+test("path traversal refuses ambiguous partial child matches", async () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: { default: { name: "default", token: "token-default" } },
+  });
+  cacheModule.replaceAllNodes([
+    { id: "root-1", name: "Inbox", parent_id: null, modifiedAt: 100 },
+    { id: "project-a", name: "Project Alpha", parent_id: "root-1", modifiedAt: 101 },
+    { id: "project-b", name: "Project Beta", parent_id: "root-1", modifiedAt: 102 },
+  ]);
+  cacheModule.setTargetUuid("inbox", "root-1");
+
+  const result = await runCli(["--agent", "read", "@inbox/Project"]);
+  expect(result.exitCode).toBe(1);
+  expect(JSON.parse(result.stdout).error.code).toBe("node_not_found");
+});
+
 async function runCli(
   args: string[],
   envOverrides: Record<string, string> = {},
+  stdin = "",
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn(["bun", "run", join(import.meta.dir, "../wf.ts"), ...args], {
     stdin: "pipe",
@@ -386,6 +443,7 @@ async function runCli(
     env: { ...process.env, ...envOverrides },
   });
 
+  if (stdin) proc.stdin.write(stdin);
   proc.stdin.end();
 
   const [stdout, stderr, exitCode] = await Promise.all([

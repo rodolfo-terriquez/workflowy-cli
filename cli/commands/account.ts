@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { loadConfig, saveConfig } from "../shared/config.ts";
@@ -14,7 +15,7 @@ export function registerAccountCommands(program: Command): void {
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "account:list", wf_version: "3.2.1" },
+          meta: { command: "account:list", wf_version: APP_VERSION },
           accounts: accounts.map((name) => ({
             name,
             active: name === config.activeAccount,
@@ -57,7 +58,7 @@ export function registerAccountCommands(program: Command): void {
       saveConfig(config);
 
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "account:switch", wf_version: "3.2.1" }, active_account: name }));
+        console.log(JSON.stringify({ meta: { command: "account:switch", wf_version: APP_VERSION }, active_account: name }));
       } else {
         console.log(`\n  ${chalk.green("✓")} Switched to account ${chalk.bold(name)}\n`);
       }
@@ -71,7 +72,7 @@ export function registerAccountCommands(program: Command): void {
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "account:current", wf_version: "3.2.1" },
+          meta: { command: "account:current", wf_version: APP_VERSION },
           active_account: config.activeAccount,
           has_token: !!config.accounts[config.activeAccount]?.token,
         }));

@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI, type LlmDocItem, type LlmDocOperation } from "../shared/api.ts";
@@ -275,7 +276,7 @@ export function registerDocEdit(program: Command): void {
             operation_count: operations.length,
             operation_types: Array.from(new Set(operations.map((op) => op.op))),
             timestamp: new Date().toISOString(),
-            wf_version: "3.2.1",
+            wf_version: APP_VERSION,
           },
           success: true,
           message: `Applied ${operations.length} operation${operations.length === 1 ? "" : "s"} to ${resolvedRoot}`,

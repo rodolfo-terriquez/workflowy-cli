@@ -289,5 +289,15 @@ if (process.argv.length <= 2) {
     process.exit(0);
   }
 
-  program.parse(expandedArgs);
+  try {
+    await program.parseAsync(expandedArgs);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isAgentMode()) {
+      console.log(JSON.stringify({ error: { code: "internal_error", message } }, null, 2));
+    } else {
+      console.error(`\n  Error: ${message}\n`);
+    }
+    process.exitCode = 1;
+  }
 }

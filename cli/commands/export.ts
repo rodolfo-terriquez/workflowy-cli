@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import { WorkflowyAPI } from "../shared/api.ts";
 import { requireToken, loadConfig } from "../shared/config.ts";
@@ -56,7 +57,7 @@ export function registerExport(program: Command): void {
                   resolved_id: resolved.id,
                   timestamp: new Date().toISOString(),
                   account: config.activeAccount,
-                  wf_version: "3.2.1",
+                  wf_version: APP_VERSION,
                 },
               node: {
                 id: node.id,

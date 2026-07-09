@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { writeFileSync, readFileSync, existsSync, unlinkSync } from "fs";
@@ -11,6 +12,7 @@ import { cleanHtml } from "../shared/nodes.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 import { getMinimumWatchIntervalMs } from "../shared/rate-limit.ts";
+import { getSelfCliInvocation } from "../shared/runtime.ts";
 
 const PID_PATH = join(getConfigDir(), "watch.pid");
 const WEBHOOKS_PATH = join(getConfigDir(), "webhooks.json");
@@ -81,7 +83,7 @@ export function registerWatch(program: Command): void {
         if (opts.interval && opts.interval !== "5m") extraArgs.push("--interval", opts.interval);
         if (opts.target) extraArgs.push("--target", opts.target);
         if (opts.notify) extraArgs.push("--notify", opts.notify);
-        startDaemonMode(requestedInterval, extraArgs);
+        await startDaemonMode(requestedInterval, extraArgs);
         return;
       }
 
@@ -108,7 +110,7 @@ export function registerWatch(program: Command): void {
     .action(() => {
       if (!existsSync(PID_PATH)) {
         if (isAgentMode()) {
-          console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: "3.2.1" }, running: false }));
+          console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: APP_VERSION }, running: false }));
         } else {
           console.log("\n  Watch daemon: not running.\n");
         }
@@ -118,21 +120,21 @@ export function registerWatch(program: Command): void {
       if (Number.isNaN(pid) || !isProcessRunning(pid)) {
         unlinkSync(PID_PATH);
         if (isAgentMode()) {
-          console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: "3.2.1" }, running: false }));
+          console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: APP_VERSION }, running: false }));
         } else {
           console.log("\n  Watch daemon: not running.\n");
         }
         return;
       }
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: "3.2.1" }, running: true, pid }));
+        console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: APP_VERSION }, running: true, pid }));
       } else {
         console.log(`\n  Watch daemon: running (PID ${pid})\n`);
       }
     });
 }
 
-function startDaemonMode(interval: string, extraArgs: string[]): void {
+async function startDaemonMode(interval: string, extraArgs: string[]): Promise<void> {
   if (existsSync(PID_PATH)) {
     const existingPid = readFileSync(PID_PATH, "utf-8").trim();
     try {
@@ -144,17 +146,36 @@ function startDaemonMode(interval: string, extraArgs: string[]): void {
     }
   }
 
+  requireToken();
+
   const child = Bun.spawn(
-    ["bun", "run", import.meta.dir + "/../wf.ts", "watch:start", "--interval", interval, ...extraArgs],
+    getSelfCliInvocation(["watch:start", "--interval", interval, ...extraArgs]),
     {
-      stdio: ["ignore", "pipe", "ignore"],
+      stdio: ["ignore", "ignore", "ignore"],
       env: { ...process.env, WF_AGENT: "1" },
     }
   );
 
+  const startup = await Promise.race([
+    child.exited.then((exitCode) => ({ exited: true as const, exitCode })),
+    Bun.sleep(150).then(() => ({ exited: false as const, exitCode: null })),
+  ]);
+  if (startup.exited) {
+    exitWithError("daemon_start_failed", `Watch daemon exited during startup with status ${startup.exitCode}.`);
+  }
+
   child.unref();
   writeFileSync(PID_PATH, String(child.pid));
-  console.log(`\n  ${chalk.green("✓")} Watch daemon started (PID ${child.pid}), polling every ${interval}\n`);
+  if (isAgentMode()) {
+    console.log(JSON.stringify({
+      meta: { command: "watch:start", wf_version: APP_VERSION },
+      running: true,
+      pid: child.pid,
+      interval,
+    }));
+  } else {
+    console.log(`\n  ${chalk.green("✓")} Watch daemon started (PID ${child.pid}), polling every ${interval}\n`);
+  }
 }
 
 function parseInterval(s: string): number {
@@ -212,13 +233,17 @@ async function fireWebhooks(events: ChangeEvent[]): Promise<void> {
     for (const event of events) {
       if (hook.filter !== "*" && !matchesFilter(hook.filter, event)) continue;
       try {
-        await fetch(hook.url, {
+        const response = await fetch(hook.url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...event, webhook_id: hook.id }),
+          signal: AbortSignal.timeout(10_000),
         });
-      } catch {
-        // silent fail
+        if (!response.ok) {
+          console.error(`[wf webhook ${hook.id}] HTTP ${response.status}`);
+        }
+      } catch (error) {
+        console.error(`[wf webhook ${hook.id}] ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   }
@@ -306,8 +331,8 @@ async function runWatchLoop(interval: string, target?: string, notify?: string):
         const uuid = resolveSavedTargetNodeId(resolved.id) ?? resolved.id;
         subtreeIds = getSubtreeIds(uuid);
       }
-    } catch {
-      // silently retry
+    } catch (error) {
+      console.error(`[wf watch] ${error instanceof Error ? error.message : String(error)}`);
     }
 
     await Bun.sleep(intervalMs);

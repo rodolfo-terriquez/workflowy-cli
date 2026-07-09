@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { findByNameOrPath } from "../shared/path.ts";
@@ -60,7 +61,7 @@ export function registerNodeFind(program: Command): void {
             account: config.activeAccount,
             cache_age_seconds: cacheAge,
             cache_stale: isCacheStale(),
-            wf_version: "3.2.1",
+            wf_version: APP_VERSION,
           },
           nodes: matches.map((m) => ({
             id: m.id,

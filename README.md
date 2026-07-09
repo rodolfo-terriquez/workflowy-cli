@@ -34,6 +34,12 @@ wf cache:sync
 wf doctor
 ```
 
+The interactive login prompt hides the key. For automation, pipe it over stdin instead of placing it in shell history:
+
+```bash
+printf %s "$WORKFLOWY_API_KEY" | wf login --stdin
+```
+
 That’s it. The installer auto-detects your OS and CPU architecture, downloads the latest prebuilt binary, installs `wf`, and adds it to your PATH when possible.
 
 This project is WorkFlowy-native:
@@ -46,7 +52,7 @@ This project is WorkFlowy-native:
 
 ## Status
 
-Current version: `3.2.1`
+Current version: `3.2.2`
 
 Implemented today:
 
@@ -64,7 +70,7 @@ To install a specific version or custom location:
 
 ```bash
 curl -fsSL https://github.com/rodolfo-terriquez/workflowy-cli/releases/latest/download/install.sh | \
-  WF_VERSION=v3.2.1 WF_INSTALL_DIR="$HOME/.local/bin" bash
+  WF_VERSION=v3.2.2 WF_INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
 ### Build from source
@@ -416,7 +422,7 @@ wf ai:reject
 LLM config:
 
 ```bash
-wf config:set llm.apiKey <openrouter-key>
+printf %s "$OPENROUTER_API_KEY" | wf config:set llm.apiKey --stdin
 wf config:set llm.model google/gemini-flash-2.5
 ```
 
@@ -426,12 +432,12 @@ Other providers:
 # Any OpenAI-compatible chat-completions provider
 wf config:set llm.provider openai-compatible
 wf config:set llm.baseUrl https://api.openai.com/v1
-wf config:set llm.apiKey <provider-key>
+printf %s "$PROVIDER_API_KEY" | wf config:set llm.apiKey --stdin
 wf config:set llm.model <model-id>
 
 # Anthropic Messages API
 wf config:set llm.provider anthropic
-wf config:set llm.apiKey <anthropic-key>
+printf %s "$ANTHROPIC_API_KEY" | wf config:set llm.apiKey --stdin
 wf config:set llm.model <claude-model-id>
 ```
 
@@ -472,7 +478,7 @@ wf mcp
 wf mcp --port 3399
 ```
 
-`wf mcp` supports stdio transport by default and HTTP/SSE when `--port` is provided.
+`wf mcp` supports stdio transport by default and loopback-only Streamable HTTP at `/mcp` when `--port` is provided, with the legacy SSE endpoints retained for compatibility. HTTP mode binds to `127.0.0.1`; set `WORKFLOWY_MCP_AUTH_TOKEN` to require `Authorization: Bearer <token>` on every HTTP request. `--tools` is enforced for both discovery and direct tool calls.
 
 MCP client config example:
 
@@ -531,7 +537,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:read",
-    "wf_version": "3.2.1"
+    "wf_version": "3.2.2"
   },
   "node": {},
   "children": []
@@ -544,7 +550,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "search",
-    "wf_version": "3.2.1"
+    "wf_version": "3.2.2"
   },
   "nodes": []
 }
@@ -556,7 +562,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:add",
-    "wf_version": "3.2.1"
+    "wf_version": "3.2.2"
   },
   "message": "..."
 }
@@ -576,7 +582,7 @@ Typical response shapes:
 
 ## Configuration
 
-Config is stored under `~/.workflowy/config.json`.
+Config is stored under `~/.workflowy/config.json`. On Unix-like systems, `wf` keeps the directory private (`0700`) and the config file, which may contain API keys, at `0600`. Sensitive values are redacted by `config:get` unless `--show-secret` is explicitly provided.
 
 Common keys:
 
@@ -585,7 +591,7 @@ wf config:get llm.provider
 wf config:get llm.model
 wf config:set llm.provider openrouter
 wf config:set llm.model google/gemini-flash-2.5
-wf config:set llm.apiKey <key>
+printf %s "$LLM_API_KEY" | wf config:set llm.apiKey --stdin
 wf config:set llm.baseUrl <openai-compatible-base-url>
 ```
 
@@ -610,9 +616,10 @@ wf account:current
 ```bash
 bun install
 bun run typecheck
+bun run release:check
 bun test
 bun run build
-./dist/wf --version
+bun run smoke
 ```
 
 Helpful local checks:
@@ -624,7 +631,7 @@ Helpful local checks:
 ./dist/wf cache:sync --status --agent
 ```
 
-CI runs those core checks on push and pull request.
+CI runs those core checks on Linux, macOS, and Windows on push and pull request.
 
 Release steps are documented in `RELEASE.md`.
 

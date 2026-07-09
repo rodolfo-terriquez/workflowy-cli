@@ -10,6 +10,8 @@ import {
 
 const API_BASE = "https://workflowy.com/api/v1";
 const LLM_DOC_BASE = "https://beta.workflowy.com/api/llm/doc";
+const DEFAULT_API_TIMEOUT_MS = 30_000;
+const RETRYABLE_GET_STATUSES = new Set([500, 502, 503, 504]);
 
 // --- Standard API types (v1) ---
 
@@ -85,12 +87,37 @@ export class WorkflowyAPI {
 
   private async request(url: string, init: RequestInit, endpoint: RateLimitEndpoint): Promise<Response> {
     const settings = getRateLimitSettings();
+    const configuredTimeoutSeconds = Number(loadConfig().api?.timeoutSeconds);
+    const timeoutMs = Number.isFinite(configuredTimeoutSeconds) && configuredTimeoutSeconds > 0
+      ? Math.floor(configuredTimeoutSeconds * 1000)
+      : DEFAULT_API_TIMEOUT_MS;
+    const method = (init.method ?? "GET").toUpperCase();
 
     for (let attempt = 0; attempt < settings.maxRetries; attempt++) {
       await waitForRateLimitSlot(this.accountName, endpoint);
-      const res = await fetch(url, init);
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          ...init,
+          signal: init.signal ?? AbortSignal.timeout(timeoutMs),
+        });
+      } catch (error) {
+        if (method === "GET" && attempt < settings.maxRetries - 1) {
+          await Bun.sleep(250 * 2 ** attempt);
+          continue;
+        }
+        if (error instanceof DOMException && error.name === "TimeoutError") {
+          throw new Error(`API request timed out after ${timeoutMs}ms: ${url}`);
+        }
+        throw error;
+      }
 
       if (res.status !== 429) {
+        if (method === "GET" && RETRYABLE_GET_STATUSES.has(res.status) && attempt < settings.maxRetries - 1) {
+          await res.body?.cancel();
+          await Bun.sleep(250 * 2 ** attempt);
+          continue;
+        }
         return res;
       }
 

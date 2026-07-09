@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { getCacheDb, getCacheNodeCount, getSubtreeIds, buildBreadcrumbDisplay, markTargetDirty, type CachedNode } from "../shared/cache.ts";
@@ -26,6 +27,7 @@ interface BulkOpts {
   since?: string;
   to?: string;
   dryRun?: boolean;
+  yes?: boolean;
   format?: string;
 }
 
@@ -73,6 +75,7 @@ function addBulkFlags(cmd: Command): Command {
     .option("--target <target>", "Scope to subtree")
     .option("--since <duration>", "Only nodes modified in last N (e.g. 7d)")
     .option("--dry-run", "Preview without executing")
+    .option("--yes", "Confirm destructive execution")
     .option("--format <type>", "Output format (outline|json)");
 }
 
@@ -81,6 +84,23 @@ async function executeBulk(
   buildOp: (node: CachedNode, opts: BulkOpts) => LlmDocOperation,
   opts: BulkOpts,
 ): Promise<void> {
+  if (operation === "delete") {
+    if (!opts.filter && !opts.target && !opts.since) {
+      exitWithError(
+        "scope_required",
+        "Bulk delete requires an explicit --filter, --target, or --since scope.",
+        "Add a scope and run with --dry-run first.",
+      );
+    }
+    if (!opts.dryRun && !opts.yes) {
+      exitWithError(
+        "confirmation_required",
+        "Bulk delete requires explicit confirmation.",
+        "Review with --dry-run, then re-run with --yes.",
+      );
+    }
+  }
+
   if (getCacheNodeCount() === 0) {
     exitWithError("cache_empty", "Cache is empty.", "Run `wf cache:sync` first.");
   }
@@ -89,7 +109,7 @@ async function executeBulk(
 
   if (nodes.length === 0) {
     if (isAgentMode()) {
-      console.log(JSON.stringify({ meta: { command: `node:bulk ${operation}`, wf_version: "3.2.1" }, message: "No matching nodes." }, null, 2));
+      console.log(JSON.stringify({ meta: { command: `node:bulk ${operation}`, wf_version: APP_VERSION }, message: "No matching nodes." }, null, 2));
     } else {
       console.log(chalk.dim("\n  No matching nodes.\n"));
     }
@@ -101,7 +121,7 @@ async function executeBulk(
   if (opts.dryRun) {
     if (useJson) {
       console.log(JSON.stringify({
-        meta: { command: `node:bulk ${operation}`, dry_run: true, wf_version: "3.2.1" },
+        meta: { command: `node:bulk ${operation}`, dry_run: true, wf_version: APP_VERSION },
         would_affect: nodes.length,
         nodes: nodes.slice(0, 50).map((n) => ({ id: n.id, name: cleanHtml(n.name), operation })),
       }, null, 2));
@@ -144,18 +164,24 @@ async function executeBulk(
   if (useJson) {
     const config = loadConfig();
     console.log(JSON.stringify({
-      meta: { command: `node:bulk ${operation}`, timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.2.1" },
+      meta: { command: `node:bulk ${operation}`, timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: APP_VERSION },
       message: `${operation}: ${totalOps} nodes affected`,
+      success: errors.length === 0,
       total: totalOps,
       api_calls: grouped.size,
       errors: errors.length > 0 ? errors : undefined,
     }, null, 2));
   } else {
-    console.log(`\n  ${chalk.green("✓")} ${operation}: ${totalOps} nodes affected (${grouped.size} API calls)\n`);
+    const resultIcon = errors.length === 0 ? chalk.green("✓") : chalk.yellow("⚠");
+    console.log(`\n  ${resultIcon} ${operation}: ${totalOps} nodes affected (${grouped.size} API calls)\n`);
     if (errors.length > 0) {
       for (const e of errors) console.log(`  ${chalk.red("✗")} ${e}`);
       console.log("");
     }
+  }
+
+  if (errors.length > 0) {
+    process.exitCode = 1;
   }
 }
 
@@ -191,6 +217,6 @@ export function registerNodeBulk(program: Command): void {
     if (!dest) {
       exitWithError("node_not_found", `Target "${opts.to}" could not be resolved`, "Run `wf cache:sync` to refresh path lookups");
     }
-    executeBulk("move", (n) => ({ op: "move", ref: n.id, under: dest.id, position: "top" }), opts);
+    return executeBulk("move", (n) => ({ op: "move", ref: n.id, under: dest.id, position: "top" }), opts);
   });
 }

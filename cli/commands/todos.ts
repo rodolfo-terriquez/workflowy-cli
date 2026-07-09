@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { getCacheDb, getCacheNodeCount, getCacheAgeSeconds, isCacheStale, buildBreadcrumbDisplay, getSubtreeIds, type CachedNode } from "../shared/cache.ts";
@@ -144,7 +145,7 @@ export function registerNodeTodos(program: Command): void {
             account: config.activeAccount,
             cache_age_seconds: cacheAge,
             cache_stale: isCacheStale(),
-            wf_version: "3.2.1",
+            wf_version: APP_VERSION,
           },
           nodes: rows.map((r) => ({
             id: r.id,

@@ -1,6 +1,6 @@
 {
   "name": "@workflowy/cli",
-  "version": "3.2.1",
+  "version": "3.2.2",
   "description": "WorkFlowy CLI — command-line interface for agents, automations, and power users",
   "license": "MIT",
   "repository": {
@@ -19,7 +19,9 @@
   "scripts": {
     "dev": "bun run cli/wf.ts",
     "build": "bun build cli/wf.ts --compile --outfile dist/wf",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "release:check": "bun run scripts/check-release.ts",
+    "smoke": "bun run scripts/smoke.ts"
   },
   "private": true,
   "devDependencies": {

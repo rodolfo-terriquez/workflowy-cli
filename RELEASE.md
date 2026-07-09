@@ -17,9 +17,10 @@ Release assets are built automatically by `.github/workflows/release.yml` when a
    ```bash
    bun install
    bun run typecheck
+   bun run release:check
    bun test
    bun run build
-   ./dist/wf --version
+   bun run smoke
    ./dist/wf version
    ./dist/wf doctor
    ./dist/wf cache:sync --status --agent
@@ -33,8 +34,8 @@ Release assets are built automatically by `.github/workflows/release.yml` when a
 5. Create and push the release tag.
 
    ```bash
-   git tag v3.2.1
-   git push origin v3.2.1
+   git tag v3.2.2
+   git push origin v3.2.2
    ```
 
 6. The release workflow creates/updates the GitHub release and attaches:
@@ -45,7 +46,7 @@ Release assets are built automatically by `.github/workflows/release.yml` when a
    - `wf-vX.Y.Z-linux-arm64`
    - `wf-vX.Y.Z-windows-x64.exe`
    - `wf-vX.Y.Z-windows-arm64.exe`
-   - `SHA256SUMS`
+   - `SHA256SUMS` (verified by both public installers before installation)
 
 7. After the release publishes, test the public installers:
 

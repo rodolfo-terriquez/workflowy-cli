@@ -1,8 +1,9 @@
+import { APP_VERSION } from "./version.ts";
 import type { JsonOutput } from "../output/json.ts";
 import { getCacheAgeSeconds, isCacheStale } from "./cache.ts";
 import { loadConfig } from "./config.ts";
 
-const WF_VERSION = "3.2.1";
+const WF_VERSION = APP_VERSION;
 
 export function uniqueNodeIds(ids: Array<string | null | undefined>): string[] {
   return [...new Set(ids.filter((id): id is string => typeof id === "string" && id.length > 0))];

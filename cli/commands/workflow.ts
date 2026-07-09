@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from "fs";
@@ -5,12 +6,24 @@ import { join } from "path";
 import { getConfigDir } from "../shared/config.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
+import { tokenizeCommandLine } from "../shared/argv.ts";
+import { getSelfCliInvocation } from "../shared/runtime.ts";
 
 const WORKFLOWS_DIR = join(getConfigDir(), "workflows");
 
 function ensureWorkflowsDir(): void {
   if (!existsSync(WORKFLOWS_DIR)) {
     mkdirSync(WORKFLOWS_DIR, { recursive: true });
+  }
+}
+
+function validateWorkflowName(name: string): void {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(name)) {
+    exitWithError(
+      "invalid_name",
+      `Invalid workflow name: ${name}`,
+      "Use letters, numbers, dots, underscores, and hyphens without path separators.",
+    );
   }
 }
 
@@ -106,7 +119,7 @@ export function registerWorkflow(program: Command): void {
             return { name: f, description: null, steps: 0 };
           }
         });
-        console.log(JSON.stringify({ meta: { command: "workflow:list", wf_version: "3.2.1" }, workflows }, null, 2));
+        console.log(JSON.stringify({ meta: { command: "workflow:list", wf_version: APP_VERSION }, workflows }, null, 2));
         return;
       }
 
@@ -132,6 +145,7 @@ export function registerWorkflow(program: Command): void {
     .command("workflow:create <name>")
     .description("Create a new workflow template")
     .action((name: string) => {
+      validateWorkflowName(name);
       ensureWorkflowsDir();
       const filePath = join(WORKFLOWS_DIR, `${name}.yaml`);
 
@@ -156,7 +170,7 @@ steps:
       writeFileSync(filePath, template, "utf-8");
 
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "workflow:create", wf_version: "3.2.1" }, path: filePath }));
+        console.log(JSON.stringify({ meta: { command: "workflow:create", wf_version: APP_VERSION }, path: filePath }));
       } else {
         console.log(`\n  ${chalk.green("✓")} Created workflow at ${chalk.dim(filePath)}`);
         console.log(`  Edit the file to define your workflow steps.\n`);
@@ -168,6 +182,7 @@ steps:
     .description("Execute a workflow")
     .option("--format <type>", "Output format (outline|json)")
     .action(async (name: string, opts: { format?: string }) => {
+      validateWorkflowName(name);
       ensureWorkflowsDir();
       const yamlPath = join(WORKFLOWS_DIR, `${name}.yaml`);
       const ymlPath = join(WORKFLOWS_DIR, `${name}.yml`);
@@ -195,17 +210,29 @@ steps:
           }
         }
 
+        if (!step.command) {
+          results.push({ step: step.id, success: false, output: "Workflow step is missing a command." });
+          continue;
+        }
+
         const cmd = interpolateVars(step.command, vars);
         if (!isAgentMode()) process.stdout.write(`  ${chalk.dim("▸")} ${step.id}: ${chalk.dim(cmd)}...`);
 
         try {
-          const proc = Bun.spawn(["bun", "run", import.meta.dir + "/../wf.ts", ...cmd.split(/\s+/), "--agent"], {
+          const proc = Bun.spawn(getSelfCliInvocation(tokenizeCommandLine(cmd), { agent: true }), {
             stdout: "pipe",
             stderr: "pipe",
           });
 
-          const output = await new Response(proc.stdout).text();
-          await proc.exited;
+          const [output, stderr, exitCode] = await Promise.all([
+            new Response(proc.stdout).text(),
+            new Response(proc.stderr).text(),
+            proc.exited,
+          ]);
+
+          if (exitCode !== 0) {
+            throw new Error(stderr.trim() || output.trim() || `Command exited with status ${exitCode}`);
+          }
 
           let parsed: unknown = output;
           try { parsed = JSON.parse(output); } catch { /* keep as string */ }
@@ -214,20 +241,26 @@ steps:
             vars[step.output] = parsed;
           }
 
-          results.push({ step: step.id, success: true, output: parsed });
-
-          if (!isAgentMode()) console.log(` ${chalk.green("✓")}`);
-
           if (step.then === "apply" && typeof parsed === "object" && parsed !== null) {
             const proposal = (parsed as Record<string, unknown>).proposal as Record<string, unknown> | undefined;
             if (proposal?.id) {
-              const applyProc = Bun.spawn(["bun", "run", import.meta.dir + "/../wf.ts", "ai:apply", String(proposal.id), "--agent"], {
+              const applyProc = Bun.spawn(getSelfCliInvocation(["ai:apply", String(proposal.id)], { agent: true }), {
                 stdout: "pipe",
+                stderr: "pipe",
               });
-              await new Response(applyProc.stdout).text();
-              await applyProc.exited;
+              const [applyOutput, applyError, applyExitCode] = await Promise.all([
+                new Response(applyProc.stdout).text(),
+                new Response(applyProc.stderr).text(),
+                applyProc.exited,
+              ]);
+              if (applyExitCode !== 0) {
+                throw new Error(applyError.trim() || applyOutput.trim() || `Apply exited with status ${applyExitCode}`);
+              }
             }
           }
+
+          results.push({ step: step.id, success: true, output: parsed });
+          if (!isAgentMode()) console.log(` ${chalk.green("✓")}`);
         } catch (err) {
           results.push({ step: step.id, success: false, output: String(err) });
           if (!isAgentMode()) console.log(` ${chalk.red("✗")} ${err instanceof Error ? err.message : String(err)}`);
@@ -236,11 +269,15 @@ steps:
 
       if (isAgentMode() || opts.format === "json") {
         console.log(JSON.stringify({
-          meta: { command: "workflow:run", workflow: name, wf_version: "3.2.1" },
+          meta: { command: "workflow:run", workflow: name, wf_version: APP_VERSION },
           results,
         }, null, 2));
       } else {
         console.log("");
+      }
+
+      if (results.some((result) => !result.success)) {
+        process.exitCode = 1;
       }
     });
 }

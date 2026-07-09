@@ -6,15 +6,16 @@ import { join } from "path";
 import { resetCacheDb, replaceAllNodes, setMeta } from "../shared/cache.ts";
 import { saveConfig } from "../shared/config.ts";
 import { cacheTargets, resetDb, saveBookmark } from "../shared/db.ts";
-import { ensureMcpCacheReadyForInitialize, getMcpCliInvocation, getMcpInitializeSyncReason } from "./mcp.ts";
+import { ensureMcpCacheReadyForInitialize, getMcpCliInvocation, getMcpInitializeSyncReason, isAllowedMcpOrigin, isAuthorizedMcpHttpRequest } from "./mcp.ts";
 
 const CWD = fileURLToPath(new URL("../..", import.meta.url));
 
 async function runMcpServer(
   input: string,
   envOverrides: Record<string, string> = {},
+  commandArgs: string[] = [],
 ): Promise<{ code: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn(["bun", "run", "cli/wf.ts", "mcp"], {
+  const proc = Bun.spawn(["bun", "run", "cli/wf.ts", "mcp", ...commandArgs], {
     cwd: CWD,
     stdin: "pipe",
     stdout: "pipe",
@@ -298,7 +299,7 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
     expect(response.jsonrpc).toBe("2.0");
     expect(response.id).toBe(1);
     expect(response.result.protocolVersion).toBe("2024-11-05");
-    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.2.1" });
+    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.2.2" });
     expect(response.result.capabilities).toEqual({ tools: {} });
     expect(response.result.instructions).toContain("## STOP — Read This First");
     expect(response.result.instructions).toContain("workflowy_targets");
@@ -431,6 +432,110 @@ test("responds to content-length framed initialize messages over stdio", async (
     };
 
     expect(response.result.serverInfo.name).toBe("workflowy");
+  });
+});
+
+test("parses UTF-8 content-length framing by bytes", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    const body = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 14,
+      method: "unknown_café_method",
+    });
+    const byteLength = new TextEncoder().encode(body).length;
+
+    const { code, stdout, stderr } = await runMcpServer(
+      `Content-Length: ${byteLength}\r\n\r\n${body}`,
+      { WORKFLOWY_CONFIG_DIR: configDir },
+    );
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+    expect(stdout).toContain("Method not found: unknown_café_method");
+  });
+});
+
+test("initializes without exiting when authentication is not configured", async () => {
+  const configDir = mkdtempSync(join(tmpdir(), "workflowy-cli-mcp-no-auth-"));
+  try {
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 15,
+      method: "initialize",
+      params: {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "test", version: "1" },
+      },
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${message}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+    expect(parseJsonLine<{ result: { serverInfo: { name: string } } }>(stdout).result.serverInfo.name).toBe("workflowy");
+  } finally {
+    rmSync(configDir, { recursive: true, force: true });
+  }
+});
+
+test("negotiates a supported current MCP protocol version", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 17,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-11-25",
+        capabilities: {},
+        clientInfo: { name: "test", version: "1" },
+      },
+    });
+    const { stdout } = await runMcpServer(`${message}\n`, { WORKFLOWY_CONFIG_DIR: configDir });
+    expect(parseJsonLine<{ result: { protocolVersion: string } }>(stdout).result.protocolVersion).toBe("2025-11-25");
+  });
+});
+
+test("HTTP security accepts loopback origins and enforces optional bearer auth", () => {
+  expect(isAllowedMcpOrigin(null)).toBe(true);
+  expect(isAllowedMcpOrigin("http://127.0.0.1:3399")).toBe(true);
+  expect(isAllowedMcpOrigin("https://attacker.example")).toBe(false);
+
+  const previousToken = process.env.WORKFLOWY_MCP_AUTH_TOKEN;
+  process.env.WORKFLOWY_MCP_AUTH_TOKEN = "test-http-token";
+  try {
+    expect(isAuthorizedMcpHttpRequest(new Request("http://127.0.0.1/mcp"))).toBe(false);
+    expect(isAuthorizedMcpHttpRequest(new Request("http://127.0.0.1/mcp", {
+      headers: { Authorization: "Bearer test-http-token" },
+    }))).toBe(true);
+  } finally {
+    if (previousToken === undefined) delete process.env.WORKFLOWY_MCP_AUTH_TOKEN;
+    else process.env.WORKFLOWY_MCP_AUTH_TOKEN = previousToken;
+  }
+});
+
+test("rejects direct calls to tools excluded by --tools", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 16,
+      method: "tools/call",
+      params: { name: "status", arguments: {} },
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(
+      `${message}\n`,
+      { WORKFLOWY_CONFIG_DIR: configDir },
+      ["--tools", "read"],
+    );
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+    const response = parseJsonLine<ToolCallResponse>(stdout);
+    expect(response.result?.isError).toBe(true);
+    expect(response.result?.content[0]?.text).toContain("tool_not_allowed");
   });
 });
 

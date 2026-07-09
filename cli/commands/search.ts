@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI, type WFNode } from "../shared/api.ts";
@@ -197,7 +198,7 @@ function outputResults(
           cache_age_seconds: cacheAge,
           cache_stale: isCacheStale(),
           smart_search_available: !!config.llm?.apiKey,
-          wf_version: "3.2.1",
+          wf_version: APP_VERSION,
         },
         nodes: results.map((r) => ({
           id: r.id,

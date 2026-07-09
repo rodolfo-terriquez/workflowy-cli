@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import {
@@ -84,7 +85,7 @@ export function registerNodeContext(program: Command): void {
             target,
             resolved_id: node.id,
             timestamp: new Date().toISOString(),
-            wf_version: "3.2.1",
+            wf_version: APP_VERSION,
           },
           node: {
             id: node.id,

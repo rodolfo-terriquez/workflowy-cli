@@ -28,14 +28,30 @@ if ($Version -eq 'latest') {
 
 $Asset = "wf-$Version-windows-$Cpu.exe"
 $DownloadUrl = "https://github.com/$Repo/releases/download/$Version/$Asset"
-$TempFile = Join-Path ([System.IO.Path]::GetTempPath()) $Asset
+$ChecksumsUrl = "https://github.com/$Repo/releases/download/$Version/SHA256SUMS"
+$TempDir = Join-Path ([System.IO.Path]::GetTempPath()) "workflowy-cli-$([guid]::NewGuid())"
+New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
+$TempFile = Join-Path $TempDir $Asset
+$ChecksumsFile = Join-Path $TempDir 'SHA256SUMS'
 
-Write-Info "Downloading $Asset"
-Invoke-WebRequest -Uri $DownloadUrl -OutFile $TempFile
+try {
+  Write-Info "Downloading $Asset"
+  Invoke-WebRequest -Uri $DownloadUrl -OutFile $TempFile
 
-New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-$Dest = Join-Path $InstallDir 'wf.exe'
-Move-Item -Force $TempFile $Dest
+  Write-Info 'Verifying SHA-256 checksum'
+  Invoke-WebRequest -Uri $ChecksumsUrl -OutFile $ChecksumsFile
+  $ChecksumLine = Get-Content $ChecksumsFile | Where-Object { $_ -match "\s$([regex]::Escape($Asset))$" } | Select-Object -First 1
+  if (-not $ChecksumLine) { throw "No checksum found for $Asset in SHA256SUMS." }
+  $ExpectedChecksum = ($ChecksumLine -split '\s+')[0].ToLowerInvariant()
+  $ActualChecksum = (Get-FileHash -Algorithm SHA256 -Path $TempFile).Hash.ToLowerInvariant()
+  if ($ActualChecksum -ne $ExpectedChecksum) { throw "Checksum verification failed for $Asset." }
+
+  New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+  $Dest = Join-Path $InstallDir 'wf.exe'
+  Move-Item -Force $TempFile $Dest
+} finally {
+  Remove-Item -Recurse -Force $TempDir -ErrorAction SilentlyContinue
+}
 
 Write-Info "Installed wf to $Dest"
 

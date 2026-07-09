@@ -1,6 +1,7 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
-import { getConfigValue, setConfigValue, loadConfig, saveConfig } from "../shared/config.ts";
+import { getConfigValue, isSensitiveConfigKey, redactConfigValue, setConfigValue, loadConfig, saveConfig } from "../shared/config.ts";
 import { isAgentMode } from "../agent.ts";
 import { getAliases, type AliasMap } from "../shared/alias.ts";
 import { exitWithError } from "../shared/errors.ts";
@@ -9,37 +10,50 @@ export function registerConfigCommands(program: Command): void {
   program
     .command("config:get <key>")
     .description("Read a config value (dotted path, e.g. llm.model)")
-    .action((key: string) => {
+    .option("--show-secret", "Show sensitive values without redaction")
+    .action((key: string, opts: { showSecret?: boolean }) => {
       const value = getConfigValue(key);
+      const displayValue = !opts.showSecret && value !== undefined
+        ? isSensitiveConfigKey(key) ? "[redacted]" : redactConfigValue(value)
+        : value;
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "config:get", wf_version: "3.2.1" },
+          meta: { command: "config:get", wf_version: APP_VERSION },
           key,
-          value: value ?? null,
+          value: displayValue ?? null,
         }));
       } else if (value === undefined) {
         console.log(chalk.dim(`\n  ${key} is not set\n`));
       } else {
-        console.log(`\n  ${chalk.cyan(key)} = ${typeof value === "object" ? JSON.stringify(value, null, 2) : String(value)}\n`);
+        console.log(`\n  ${chalk.cyan(key)} = ${typeof displayValue === "object" ? JSON.stringify(displayValue, null, 2) : String(displayValue)}\n`);
       }
     });
 
   program
-    .command("config:set <key> <value>")
+    .command("config:set <key> [value]")
     .description("Write a config value (dotted path, e.g. llm.model google/gemini-flash-2.5)")
-    .action((key: string, value: string) => {
-      setConfigValue(key, value);
+    .option("--stdin", "Read the value from stdin (recommended for secrets)")
+    .action(async (key: string, value: string | undefined, opts: { stdin?: boolean }) => {
+      if (value !== undefined && opts.stdin) {
+        exitWithError("invalid_input", "Pass the value either as an argument or with --stdin, not both.");
+      }
+      const resolvedValue = (opts.stdin ? await Bun.stdin.text() : value)?.trim();
+      if (resolvedValue === undefined || resolvedValue === "") {
+        exitWithError("missing_arg", "A config value is required.", "Pass a value or use --stdin.");
+      }
+      setConfigValue(key, resolvedValue);
+      const displayValue = isSensitiveConfigKey(key) ? "[redacted]" : resolvedValue;
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "config:set", wf_version: "3.2.1" },
+          meta: { command: "config:set", wf_version: APP_VERSION },
           key,
-          value,
+          value: displayValue,
           status: "ok",
         }));
       } else {
-        console.log(`\n  ${chalk.green("✓")} ${chalk.cyan(key)} = ${value}\n`);
+        console.log(`\n  ${chalk.green("✓")} ${chalk.cyan(key)} = ${displayValue}\n`);
       }
     });
 
@@ -60,7 +74,7 @@ export function registerConfigCommands(program: Command): void {
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "config:alias set", wf_version: "3.2.1" },
+          meta: { command: "config:alias set", wf_version: APP_VERSION },
           alias: name,
           expansion,
           status: "ok",
@@ -79,7 +93,7 @@ export function registerConfigCommands(program: Command): void {
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "config:alias list", wf_version: "3.2.1" },
+          meta: { command: "config:alias list", wf_version: APP_VERSION },
           aliases,
         }));
         return;
@@ -112,7 +126,7 @@ export function registerConfigCommands(program: Command): void {
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "config:alias remove", wf_version: "3.2.1" },
+          meta: { command: "config:alias remove", wf_version: APP_VERSION },
           alias: name,
           status: "removed",
         }));

@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { existsSync, readdirSync, readFileSync } from "fs";
@@ -35,7 +36,7 @@ export function registerProposalsList(program: Command): void {
 
       if (useJson) {
         console.log(JSON.stringify({
-          meta: { command: "ai:list", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.2.1" },
+          meta: { command: "ai:list", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: APP_VERSION },
           proposals: proposals.map((p) => ({
             id: p.id,
             summary: p.summary,

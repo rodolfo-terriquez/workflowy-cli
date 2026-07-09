@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, readdirSync } from "fs";
@@ -103,7 +104,7 @@ export function registerAiCommands(program: Command): void {
             command: "ai:propose",
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.2.1",
+            wf_version: APP_VERSION,
           },
           proposal: {
             id: proposalId,
@@ -146,7 +147,7 @@ export function registerAiCommands(program: Command): void {
 
       if (useJson) {
         console.log(JSON.stringify({
-          meta: { command: "ai:preview", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.2.1" },
+          meta: { command: "ai:preview", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: APP_VERSION },
           proposal: {
             id: proposal.id,
             summary: proposal.summary,
@@ -224,7 +225,7 @@ export function registerAiCommands(program: Command): void {
             command: "ai:apply",
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.2.1",
+            wf_version: APP_VERSION,
           };
           const cacheAge = getCacheAgeSeconds();
           if (cacheAge !== null) {
@@ -263,7 +264,7 @@ export function registerAiCommands(program: Command): void {
 
         if (isAgentMode()) {
           console.log(JSON.stringify({
-            meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.2.1" },
+            meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: APP_VERSION },
             message: `Rejected ${all.length} proposals.`,
           }, null, 2));
         } else {
@@ -289,7 +290,7 @@ export function registerAiCommands(program: Command): void {
 
       if (useJson) {
         console.log(JSON.stringify({
-          meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: "3.2.1" },
+          meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: APP_VERSION },
           message: `Proposal ${proposal.id} rejected.`,
         }, null, 2));
       } else {

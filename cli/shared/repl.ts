@@ -6,6 +6,8 @@ import { getConfigDir, loadConfig } from "./config.ts";
 import { getCacheDb, getCacheNodeCount } from "./cache.ts";
 import { expandAlias } from "./alias.ts";
 import { getCachedTargets, listBookmarks } from "./db.ts";
+import { tokenizeCommandLine } from "./argv.ts";
+import { getSelfCliInvocation } from "./runtime.ts";
 
 const HISTORY_PATH = join(getConfigDir(), "history");
 const MAX_HISTORY = 500;
@@ -80,18 +82,6 @@ function getCachedNodeNames(limit = 50): string[] {
   } catch {
     return [];
   }
-}
-
-function isBundledRuntime(): boolean {
-  return import.meta.dir.startsWith("/$bunfs/") || import.meta.dir.includes("$bunfs");
-}
-
-function buildReplCommand(cmdTokens: string[]): string[] {
-  if (isBundledRuntime()) {
-    return [process.execPath, ...cmdTokens];
-  }
-
-  return ["bun", "run", join(import.meta.dir, "../wf.ts"), ...cmdTokens];
 }
 
 function printReplHelp(): void {
@@ -211,13 +201,20 @@ export async function startRepl(): Promise<void> {
     appendHistory(line);
 
     // Parse the line into argv-style tokens (handles quoted strings)
-    const tokens = tokenize(line);
+    let tokens: string[];
+    try {
+      tokens = tokenizeCommandLine(line);
+    } catch (error) {
+      console.error(chalk.red(`  Error: ${error instanceof Error ? error.message : String(error)}`));
+      rl.prompt();
+      return;
+    }
     const fakeArgv = ["bun", "wf.ts", ...tokens];
     const expanded = expandAlias(fakeArgv);
     const cmdTokens = expanded.slice(2);
 
     try {
-      const proc = Bun.spawn(buildReplCommand(cmdTokens), {
+      const proc = Bun.spawn(getSelfCliInvocation(cmdTokens), {
         stdout: "inherit",
         stderr: "inherit",
         env: { ...process.env, FORCE_COLOR: "1" },
@@ -234,35 +231,4 @@ export async function startRepl(): Promise<void> {
     trimHistoryFile();
     process.exit(0);
   });
-}
-
-function tokenize(input: string): string[] {
-  const tokens: string[] = [];
-  let current = "";
-  let inSingle = false;
-  let inDouble = false;
-
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i]!;
-
-    if (ch === "'" && !inDouble) {
-      inSingle = !inSingle;
-      continue;
-    }
-    if (ch === '"' && !inSingle) {
-      inDouble = !inDouble;
-      continue;
-    }
-    if (ch === " " && !inSingle && !inDouble) {
-      if (current) {
-        tokens.push(current);
-        current = "";
-      }
-      continue;
-    }
-    current += ch;
-  }
-
-  if (current) tokens.push(current);
-  return tokens;
 }

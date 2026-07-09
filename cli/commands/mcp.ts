@@ -1,10 +1,13 @@
 import type { Command } from "commander";
 import chalk from "chalk";
 import { isAgentMode } from "../agent.ts";
-import { loadConfig } from "../shared/config.ts";
+import { getActiveAccount, loadConfig } from "../shared/config.ts";
 import { getCacheAgeSeconds, getCacheNodeCount } from "../shared/cache.ts";
 import { getConfiguredMcpInstructions, getConfiguredMcpInstructionsTarget, resolveConfiguredMcpInstructionsNode } from "../shared/mcp-instructions.ts";
 import { doSync } from "./sync.ts";
+import { getSelfCliInvocation } from "../shared/runtime.ts";
+import { APP_VERSION } from "../shared/version.ts";
+import { exitWithError } from "../shared/errors.ts";
 
 interface McpTool {
   name: string;
@@ -39,11 +42,7 @@ interface CliErrorPayload {
 }
 
 export function getMcpCliInvocation(cmdArgs: string[], mainPath = Bun.main, execPath = process.execPath): string[] {
-  if (mainPath && !mainPath.startsWith("/$bunfs/")) {
-    return ["bun", "run", mainPath, "--agent", ...cmdArgs];
-  }
-
-  return [execPath, "--agent", ...cmdArgs];
+  return getSelfCliInvocation(cmdArgs, { agent: true, mainPath, execPath });
 }
 
 const DEFAULT_MCP_INSTRUCTIONS = `This MCP server connects to a user's WorkFlowy account through \`wf\`, a CLI designed for agents, automations, and power users. WorkFlowy is a nested outline where information is stored as nodes with text, optional notes, and children.
@@ -106,6 +105,7 @@ const MCP_SOFT_STALE_SECONDS = 300;
 const MCP_HARD_STALE_SECONDS = 1800;
 const MCP_AUTO_SYNC_COOLDOWN_MS = 5 * 60_000;
 const DIRECT_ID_RE = /^[0-9a-f]{8,}(-[0-9a-f]{4,}){0,4}$/i;
+const MCP_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2024-11-05"] as const;
 
 let mcpAutoSyncPromise: Promise<{ ok: boolean; error?: string; reason: string }> | null = null;
 let mcpAutoSyncStartedAt = 0;
@@ -132,6 +132,10 @@ function getMcpSoftStaleReason(): "stale" | null {
 }
 
 export function getMcpInitializeSyncReason(): "cache_empty" | "instructions_unresolved" | "hard_stale" | null {
+  if (!getActiveAccount(loadConfig())?.token) {
+    return null;
+  }
+
   if (getCacheNodeCount() === 0) {
     return "cache_empty";
   }
@@ -1027,8 +1031,9 @@ Examples:
     and other MCP clients that launch a local command.
 
   $ wf mcp --port 3399
-    Start an HTTP/SSE MCP server on localhost:3399 for clients that connect to a
-    running local server instead of spawning a command.
+    Start a loopback-only Streamable HTTP MCP server at 127.0.0.1:3399/mcp for clients that connect to a
+    running local server instead of spawning a command. Set WORKFLOWY_MCP_AUTH_TOKEN
+    to require a bearer token for every HTTP request.
 
   $ wf mcp --tools read,search,add
     Expose only a smaller tool set. Tool names can be full names like
@@ -1056,7 +1061,11 @@ Suggested agent instruction:
         : MCP_TOOLS;
 
       if (opts.port) {
-        await startHttpSseServer(Number(opts.port), tools);
+        const port = Number(opts.port);
+        if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+          exitWithError("invalid_port", `Invalid MCP port: ${opts.port}`, "Choose a port between 1 and 65535.");
+        }
+        await startHttpSseServer(port, tools);
       } else {
         await startStdioServer(tools);
       }
@@ -1197,31 +1206,105 @@ function extractContentLengthMessage(input: string):
 
   const contentLength = Number(lengthMatch[1]);
   const bodyStart = headerEnd.index + headerEnd.delimiterLength;
-  if (input.length < bodyStart + contentLength) {
+  const split = splitUtf8ByByteLength(input.slice(bodyStart), contentLength);
+  if (!split) {
     return { kind: "incomplete" };
   }
 
   return {
     kind: "message",
-    body: input.slice(bodyStart, bodyStart + contentLength),
-    rest: input.slice(bodyStart + contentLength),
+    body: split.body,
+    rest: split.rest,
   };
+}
+
+function splitUtf8ByByteLength(input: string, byteLength: number): { body: string; rest: string } | null {
+  if (byteLength === 0) return { body: "", rest: input };
+
+  const encoder = new TextEncoder();
+  let consumedBytes = 0;
+  let consumedCodeUnits = 0;
+
+  for (const char of input) {
+    consumedBytes += encoder.encode(char).length;
+    consumedCodeUnits += char.length;
+
+    if (consumedBytes === byteLength) {
+      return {
+        body: input.slice(0, consumedCodeUnits),
+        rest: input.slice(consumedCodeUnits),
+      };
+    }
+
+    if (consumedBytes > byteLength) {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 async function startHttpSseServer(port: number, tools: McpTool[]): Promise<void> {
   const sessions = new Map<string, ReadableStreamDefaultController>();
 
   Bun.serve({
+    hostname: "127.0.0.1",
     port,
     async fetch(req) {
+      if (!isAllowedMcpOrigin(req.headers.get("Origin"))) {
+        return new Response(JSON.stringify({ error: "Forbidden origin" }), {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (!isAuthorizedMcpHttpRequest(req)) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: {
+            "Content-Type": "application/json",
+            "WWW-Authenticate": "Bearer",
+          },
+        });
+      }
+
       const url = new URL(req.url);
+
+      if (url.pathname === "/mcp" && req.method === "POST") {
+        let body: Record<string, unknown>;
+        try {
+          body = await req.json() as Record<string, unknown>;
+        } catch {
+          return new Response(JSON.stringify({
+            jsonrpc: "2.0",
+            id: null,
+            error: { code: -32700, message: "Parse error" },
+          }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        const response = await safelyHandleMcpMessage(body, tools);
+        if (!response) return new Response(null, { status: 202 });
+        return new Response(JSON.stringify(response), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (url.pathname === "/mcp" && req.method === "GET") {
+        return new Response("This server does not emit unsolicited SSE events.", {
+          status: 405,
+          headers: { Allow: "POST" },
+        });
+      }
 
       if (url.pathname === "/sse" && req.method === "GET") {
         const sessionId = crypto.randomUUID();
         const stream = new ReadableStream({
           start(controller) {
             sessions.set(sessionId, controller);
-            const endpoint = `http://localhost:${port}/message?sessionId=${sessionId}`;
+            const endpoint = `http://127.0.0.1:${port}/message?sessionId=${sessionId}`;
             controller.enqueue(`event: endpoint\ndata: ${endpoint}\n\n`);
           },
           cancel() {
@@ -1261,13 +1344,29 @@ async function startHttpSseServer(port: number, tools: McpTool[]): Promise<void>
   });
 
   if (!isAgentMode()) {
-    console.log(chalk.green(`\n  MCP HTTP/SSE server listening on port ${port}`));
-    console.log(chalk.dim(`  SSE endpoint: http://localhost:${port}/sse`));
-    console.log(chalk.dim(`  Message endpoint: http://localhost:${port}/message?sessionId=<id>\n`));
+    console.log(chalk.green(`\n  MCP HTTP server listening on 127.0.0.1:${port}`));
+    console.log(chalk.dim(`  Streamable HTTP endpoint: http://127.0.0.1:${port}/mcp`));
+    console.log(chalk.dim(`  Legacy SSE endpoint: http://127.0.0.1:${port}/sse\n`));
   }
 
   // Keep the process alive
   await new Promise(() => {});
+}
+
+export function isAllowedMcpOrigin(origin: string | null): boolean {
+  if (!origin) return true;
+  try {
+    const hostname = new URL(origin).hostname;
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+export function isAuthorizedMcpHttpRequest(req: Request): boolean {
+  const expectedToken = process.env.WORKFLOWY_MCP_AUTH_TOKEN?.trim();
+  if (!expectedToken) return true;
+  return req.headers.get("Authorization") === `Bearer ${expectedToken}`;
 }
 
 async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]): Promise<Record<string, unknown> | null> {
@@ -1282,9 +1381,9 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
       jsonrpc: "2.0",
       id,
       result: {
-        protocolVersion: "2024-11-05",
+        protocolVersion: negotiateMcpProtocolVersion(msg),
         capabilities: { tools: {} },
-        serverInfo: { name: "workflowy", version: "3.2.1" },
+        serverInfo: { name: "workflowy", version: APP_VERSION },
         instructions,
       },
     };
@@ -1332,6 +1431,25 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
       : {};
     const toolName = toolParams.name;
 
+    if (MCP_TOOLS.some((tool) => tool.name === toolName) && !tools.some((tool) => tool.name === toolName)) {
+      return {
+        jsonrpc: "2.0",
+        id,
+        result: {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              error: {
+                code: "tool_not_allowed",
+                message: `Tool is not exposed by this MCP server: ${toolName}`,
+              },
+            }, null, 2),
+          }],
+          isError: true,
+        },
+      };
+    }
+
     const result = await handleToolCall(toolName, args);
 
     return {
@@ -1349,6 +1467,16 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
     id,
     error: { code: -32601, message: `Method not found: ${method}` },
   };
+}
+
+function negotiateMcpProtocolVersion(msg: Record<string, unknown>): string {
+  const params = msg.params;
+  const requested = params && typeof params === "object"
+    ? (params as { protocolVersion?: unknown }).protocolVersion
+    : undefined;
+  return typeof requested === "string" && MCP_PROTOCOL_VERSIONS.includes(requested as typeof MCP_PROTOCOL_VERSIONS[number])
+    ? requested
+    : MCP_PROTOCOL_VERSIONS[0];
 }
 
 async function safelyHandleMcpMessage(

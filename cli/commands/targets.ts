@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
@@ -30,7 +31,7 @@ export function registerTargets(program: Command): void {
               command: "targets",
               timestamp: new Date().toISOString(),
               account: config.activeAccount,
-              wf_version: "3.2.1",
+              wf_version: APP_VERSION,
             },
             nodes: targets.map((t) => ({
               id: t.key,

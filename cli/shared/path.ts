@@ -140,11 +140,14 @@ function resolvePathTraversal(input: string): ResolvedPath | null {
   for (const segment of pathParts) {
     const segmentLower = segment.toLowerCase();
     const children = getChildren(current.id);
-    const match = children.find(
+    const exactMatches = children.filter(
       (c) => cleanHtml(c.name).toLowerCase() === segmentLower
-    ) ?? children.find(
-      (c) => cleanHtml(c.name).toLowerCase().includes(segmentLower)
     );
+    const partialMatches = exactMatches.length === 0
+      ? children.filter((c) => cleanHtml(c.name).toLowerCase().includes(segmentLower))
+      : [];
+    const candidates = exactMatches.length > 0 ? exactMatches : partialMatches;
+    const match = candidates.length === 1 ? candidates[0] : null;
 
     if (!match) return null;
     current = match;

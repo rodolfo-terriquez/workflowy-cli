@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { existsSync, readFileSync, writeFileSync } from "fs";
@@ -47,7 +48,7 @@ export function registerWebhook(program: Command): void {
       saveWebhooks(hooks);
 
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "webhook:create", wf_version: "3.2.1" }, webhook: hook }));
+        console.log(JSON.stringify({ meta: { command: "webhook:create", wf_version: APP_VERSION }, webhook: hook }));
       } else {
         console.log(`\n  ${chalk.green("✓")} Webhook ${chalk.cyan(id)} created → ${chalk.dim(opts.url)}\n`);
       }
@@ -60,7 +61,7 @@ export function registerWebhook(program: Command): void {
       const hooks = loadWebhooks();
 
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "webhook:list", wf_version: "3.2.1" }, webhooks: hooks, count: hooks.length }));
+        console.log(JSON.stringify({ meta: { command: "webhook:list", wf_version: APP_VERSION }, webhooks: hooks, count: hooks.length }));
         return;
       }
 
@@ -87,7 +88,7 @@ export function registerWebhook(program: Command): void {
       saveWebhooks(hooks);
 
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "webhook:delete", wf_version: "3.2.1" }, deleted: id }));
+        console.log(JSON.stringify({ meta: { command: "webhook:delete", wf_version: APP_VERSION }, deleted: id }));
       } else {
         console.log(`\n  ${chalk.red("✗")} Webhook ${chalk.cyan(id)} deleted.\n`);
       }
@@ -117,7 +118,7 @@ export function registerWebhook(program: Command): void {
         });
 
         if (isAgentMode()) {
-          console.log(JSON.stringify({ meta: { command: "webhook:test", wf_version: "3.2.1" }, status: res.status, ok: res.ok }));
+          console.log(JSON.stringify({ meta: { command: "webhook:test", wf_version: APP_VERSION }, status: res.status, ok: res.ok }));
         } else {
           if (res.ok) {
             console.log(`\n  ${chalk.green("✓")} Test sent to ${chalk.dim(hook.url)} — ${res.status}\n`);

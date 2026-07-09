@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
@@ -8,19 +9,29 @@ import { exitWithError } from "../shared/errors.ts";
 export function registerLogin(program: Command): void {
   program
     .command("login [apiKey]")
-    .description("Authenticate with WorkFlowy using an API key")
+    .description("Authenticate with WorkFlowy using an API key (prompt, --stdin, or WORKFLOWY_API_KEY recommended)")
     .option("--account <name>", "Account name", "default")
-    .action(async (apiKey: string | undefined, opts: { account: string }) => {
-      let key = apiKey;
+    .option("--stdin", "Read the API key from stdin")
+    .action(async (apiKey: string | undefined, opts: { account: string; stdin?: boolean }) => {
+      if (apiKey && opts.stdin) {
+        exitWithError("invalid_input", "Pass the API key either as an argument or with --stdin, not both.");
+      }
+
+      let key = opts.stdin ? await Bun.stdin.text() : apiKey;
+
+      if (apiKey) {
+        console.error("Warning: passing API keys as command arguments can expose them in shell history. Prefer the prompt, --stdin, or WORKFLOWY_API_KEY.");
+      }
+
+      if (!key) {
+        key = process.env.WORKFLOWY_API_KEY;
+      }
 
       if (!key) {
         if (process.stdin.isTTY) {
-          key = await prompt("API key: ");
+          key = await promptSecret("API key: ");
         } else {
-          key = process.env.WORKFLOWY_API_KEY;
-          if (!key) {
-            exitWithError("missing_api_key", "API key required. Pass it as an argument, or set WORKFLOWY_API_KEY.");
-          }
+          exitWithError("missing_api_key", "API key required. Use --stdin or set WORKFLOWY_API_KEY.");
         }
       }
 
@@ -47,7 +58,7 @@ export function registerLogin(program: Command): void {
           console.log(`  Account saved as "${opts.account}"\n`);
         } else {
           console.log(JSON.stringify({
-            meta: { command: "login", wf_version: "3.2.1" },
+            meta: { command: "login", wf_version: APP_VERSION },
             message: "Authenticated successfully",
             account: opts.account,
           }));
@@ -62,25 +73,40 @@ export function registerLogin(program: Command): void {
     });
 }
 
-function prompt(message: string): Promise<string> {
+function promptSecret(message: string): Promise<string> {
   process.stdout.write(message);
 
   return new Promise<string>((resolve) => {
     let input = "";
+    const wasRaw = process.stdin.isRaw;
     process.stdin.resume();
     process.stdin.setEncoding("utf8");
+    process.stdin.setRawMode?.(true);
+
+    const cleanup = () => {
+      process.stdin.removeListener("data", onData);
+      process.stdin.setRawMode?.(wasRaw ?? false);
+      process.stdin.pause();
+    };
 
     const onData = (data: string) => {
-      if (data === "\n" || data === "\r" || data === "\r\n") {
-        process.stdin.pause();
-        process.stdin.removeListener("data", onData);
-        resolve(input);
-      } else if (data === "\u0003") {
-        process.exit(0);
-      } else if (data === "\u007F" || data === "\b") {
-        input = input.slice(0, -1);
-      } else {
-        input += data;
+      for (const char of data) {
+        if (char === "\n" || char === "\r") {
+          cleanup();
+          process.stdout.write("\n");
+          resolve(input);
+          return;
+        }
+        if (char === "\u0003") {
+          cleanup();
+          process.stdout.write("\n");
+          process.exit(130);
+        }
+        if (char === "\u007F" || char === "\b") {
+          input = input.slice(0, -1);
+        } else {
+          input += char;
+        }
       }
     };
 

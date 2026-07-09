@@ -131,6 +131,7 @@ async function completeOpenAiCompatible(settings: LlmSettings, request: LlmJsonR
       temperature: 0.1,
       max_tokens: settings.maxOutputTokens,
     }),
+    signal: AbortSignal.timeout(60_000),
   });
 
   if (!response.ok) {
@@ -161,6 +162,7 @@ async function completeAnthropic(settings: LlmSettings, request: LlmJsonRequest)
       ...(request.system ? { system: request.system } : {}),
       messages: [{ role: "user", content: request.prompt }],
     }),
+    signal: AbortSignal.timeout(60_000),
   });
 
   if (!response.ok) {

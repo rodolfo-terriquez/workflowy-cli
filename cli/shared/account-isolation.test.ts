@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdtempSync, rmSync } from "fs";
+import { existsSync, mkdtempSync, rmSync, statSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -120,6 +120,20 @@ test("cache metadata and history stay isolated per account", () => {
   expect(cacheModule.getTargetUuid("inbox")).toBe("node-default");
   expect(cacheModule.isTargetDirty("inbox")).toBe(true);
   expect(historyModule.getAccessHistory().map((entry) => entry.id)).toEqual(["node-default"]);
+});
+
+test("config storage uses private directory and file permissions", () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: { default: { name: "default", token: "secret-token" } },
+  });
+
+  if (process.platform !== "win32") {
+    expect(statSync(testConfigDir).mode & 0o777).toBe(0o700);
+    expect(statSync(join(testConfigDir, "config.json")).mode & 0o777).toBe(0o600);
+  }
+
+  expect(configModule.loadConfig().accounts.default?.token).toBe("secret-token");
 });
 
 test("target cache migrates legacy schema and allows duplicate ids across accounts", () => {

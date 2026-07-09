@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { writeFileSync, existsSync, readFileSync, appendFileSync, mkdirSync } from "fs";
@@ -140,7 +141,7 @@ export function registerCompletions(program: Command): void {
       writeFileSync(join(getConfigDir(), "completions-installed"), shell, "utf-8");
 
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "completions install", wf_version: "3.2.1" }, shell, path: targetPath }));
+        console.log(JSON.stringify({ meta: { command: "completions install", wf_version: APP_VERSION }, shell, path: targetPath }));
       } else {
         console.log(`\n  ${chalk.green("✓")} Installed ${shell} completions at ${chalk.dim(targetPath)}`);
         console.log(`  Restart your shell or run ${chalk.cyan("source " + targetPath)} to activate.\n`);

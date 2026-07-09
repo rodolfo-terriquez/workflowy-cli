@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
@@ -77,7 +78,7 @@ export function registerCacheDiff(program: Command): void {
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
-          meta: { command: "cache:diff", timestamp: new Date().toISOString(), since: opts.since ?? null, wf_version: "3.2.1" },
+          meta: { command: "cache:diff", timestamp: new Date().toISOString(), since: opts.since ?? null, wf_version: APP_VERSION },
           added: added.map((a) => ({ id: a.id, name: cleanHtml(a.name) })),
           modified: modified.map((m) => ({ id: m.id, name: cleanHtml(m.name), changes: m.changes })),
           deleted: deleted.map((d) => ({ id: d.id, name: cleanHtml(d.name) })),

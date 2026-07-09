@@ -153,6 +153,7 @@ async function getApiStatus(token: string | undefined): Promise<ApiStatus> {
     const start = Date.now();
     const res = await fetch("https://beta.workflowy.com/api/llm/doc/read/inbox/?depth=0", {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15_000),
     });
 
     return {
@@ -246,7 +247,7 @@ export async function collectDoctorReport(): Promise<DoctorReport> {
   checks.push({
     label: "LLM API key",
     ok: true,
-    detail: llmKey ? "present" : "missing — set with `wf config:set llm.apiKey <key>`",
+    detail: llmKey ? "present" : "missing — set securely with `printf %s \"$LLM_API_KEY\" | wf config:set llm.apiKey --stdin`",
     warn: !llmKey,
   });
 

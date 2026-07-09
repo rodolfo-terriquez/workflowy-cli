@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { getAccessHistory } from "../shared/history.ts";
@@ -27,7 +28,7 @@ export function registerHistory(program: Command): void {
             count: history.length,
             timestamp: new Date().toISOString(),
             account: config.activeAccount,
-            wf_version: "3.2.1",
+            wf_version: APP_VERSION,
           },
           entries: history,
         }, null, 2));

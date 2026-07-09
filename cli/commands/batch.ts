@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import { WorkflowyAPI, type LlmDocOperation } from "../shared/api.ts";
 import { requireToken } from "../shared/config.ts";
@@ -343,7 +344,7 @@ export function registerBatch(program: Command): void {
       }
 
       console.log(JSON.stringify({
-        meta: { command: "batch", timestamp: new Date().toISOString(), wf_version: "3.2.1" },
+        meta: { command: "batch", timestamp: new Date().toISOString(), wf_version: APP_VERSION },
         success: !hadFailures,
         results,
         total_operations: ops.length,
