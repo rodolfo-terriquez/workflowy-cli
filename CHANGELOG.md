@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 3.3.0 - 2026-07-11
 
 - Retain an independent SQLite node cache for every configured account instead of replacing one shared node table on account switches.
 - Add global `--account <name>` selection for account-qualified reads, writes, syncs, watches, and automation without changing the configured default account.

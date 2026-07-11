@@ -34,8 +34,8 @@ Release assets are built automatically by `.github/workflows/release.yml` when a
 5. Create and push the release tag.
 
    ```bash
-   git tag v3.2.2
-   git push origin v3.2.2
+   git tag v3.3.0
+   git push origin v3.3.0
    ```
 
 6. The release workflow creates/updates the GitHub release and attaches:
