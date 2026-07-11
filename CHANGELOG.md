@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Retain an independent SQLite node cache for every configured account instead of replacing one shared node table on account switches.
+- Add global `--account <name>` selection for account-qualified reads, writes, syncs, watches, and automation without changing the configured default account.
+- Isolate background daemon state and pending AI proposals per account, and migrate the existing single-account cache automatically.
+
 ## 3.2.2 - 2026-07-09
 
 Maintenance and security hardening release.

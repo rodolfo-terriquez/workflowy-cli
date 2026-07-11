@@ -1,4 +1,4 @@
-import { loadConfig } from "./config.ts";
+import { getActiveAccountName } from "./config.ts";
 import { getMeta, setMeta } from "./cache.ts";
 
 export interface HistoryEntry {
@@ -11,7 +11,7 @@ export interface HistoryEntry {
 const MAX_ENTRIES = 100;
 
 function getHistoryKey(): string {
-  const account = loadConfig().activeAccount || "default";
+  const account = getActiveAccountName();
   return `access_history:${account}`;
 }
 

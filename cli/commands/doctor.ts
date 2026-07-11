@@ -2,7 +2,7 @@ import type { Command } from "commander";
 import chalk from "chalk";
 import { existsSync, readFileSync } from "fs";
 import { homedir, platform } from "os";
-import { getConfigDir, loadConfig, getDbPath } from "../shared/config.ts";
+import { getAccountCacheDbPath, getAccountStorageKey, getActiveAccountName, getConfigDir, loadConfig } from "../shared/config.ts";
 import { getCacheNodeCount, getCacheAgeSeconds } from "../shared/cache.ts";
 import { isAgentMode } from "../agent.ts";
 import { join } from "path";
@@ -65,7 +65,7 @@ function isProcessRunning(pid: number): boolean {
 }
 
 function getWatchDaemonStatus(): { ok: boolean; detail: string } {
-  const watchPidPath = join(getConfigDir(), "watch.pid");
+  const watchPidPath = join(getConfigDir(), `watch-${getAccountStorageKey(getActiveAccountName())}.pid`);
   if (!existsSync(watchPidPath)) {
     return { ok: true, detail: "not running" };
   }
@@ -199,7 +199,7 @@ export async function collectDoctorReport(): Promise<DoctorReport> {
   checks.push({ label: "Binary version", ok: true, detail: VERSION });
 
   const config = loadConfig();
-  const activeAccount = config.activeAccount;
+  const activeAccount = getActiveAccountName(config);
   const token = config.accounts[activeAccount]?.token;
   const hasToken = !!token;
   checks.push({ label: "Auth token present", ok: hasToken, detail: hasToken ? "yes" : "missing — run `wf login`" });
@@ -219,7 +219,7 @@ export async function collectDoctorReport(): Promise<DoctorReport> {
 
   const nodeCount = getCacheNodeCount();
   const cacheAge = getCacheAgeSeconds();
-  const dbPath = getDbPath();
+  const dbPath = getAccountCacheDbPath(activeAccount);
   const dbExists = existsSync(dbPath);
   const cachePresent = dbExists && nodeCount > 0;
   const cacheStale = cacheAge === null || cacheAge > 300;

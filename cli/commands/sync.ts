@@ -4,7 +4,7 @@ import chalk from "chalk";
 import { writeFileSync, readFileSync, existsSync, unlinkSync } from "fs";
 import { join } from "path";
 import { WorkflowyAPI } from "../shared/api.ts";
-import { requireToken, getConfigDir, loadConfig } from "../shared/config.ts";
+import { getAccountStorageKey, getActiveAccountName, loadConfig, requireToken, getConfigDir, setAccountOverride } from "../shared/config.ts";
 import {
   replaceAllNodes,
   getLastSyncedAt,
@@ -25,8 +25,11 @@ import { exitWithError } from "../shared/errors.ts";
 
 const SYSTEM_TARGETS = ["inbox", "today", "tomorrow", "calendar", "next_week"] as const;
 
-const PID_PATH = join(getConfigDir(), "sync.pid");
 const SYNC_WATCH_INTERVAL_MS = 5 * 60_000;
+
+function getSyncPidPath(): string {
+  return join(getConfigDir(), `sync-${getAccountStorageKey(getActiveAccountName())}.pid`);
+}
 
 export function registerCacheSync(program: Command): void {
   program
@@ -36,10 +39,19 @@ export function registerCacheSync(program: Command): void {
     .option("--watch", "Background daemon, re-syncs every 5 min")
     .option("--status", "Show last sync time and node count")
     .option("--stop", "Stop the background sync daemon")
+    .option("--all-accounts", "Sync every configured account sequentially")
     .addOption(new Option("--watch-loop").hideHelp())
-    .action(async (opts: { watch?: boolean; status?: boolean; stop?: boolean; watchLoop?: boolean }) => {
+    .action(async (opts: { watch?: boolean; status?: boolean; stop?: boolean; allAccounts?: boolean; watchLoop?: boolean }) => {
       if (opts.watchLoop) {
         await runSyncWatchLoop();
+        return;
+      }
+
+      if (opts.allAccounts) {
+        if (opts.watch || opts.status || opts.stop) {
+          exitWithError("invalid_options", "--all-accounts cannot be combined with --watch, --status, or --stop.");
+        }
+        await syncAllAccounts();
         return;
       }
 
@@ -62,6 +74,52 @@ export function registerCacheSync(program: Command): void {
     });
 }
 
+async function syncAllAccounts(): Promise<void> {
+  const config = loadConfig();
+  const accountNames = Object.keys(config.accounts);
+  if (accountNames.length === 0) {
+    exitWithError("account_not_found", "No configured accounts found.", "Run `wf login --account <name>` first.");
+  }
+
+  const previousAccount = getActiveAccountName(config);
+  const results: Array<{ account: string; success: boolean; node_count?: number; synced_at?: number; error?: string }> = [];
+
+  try {
+    for (const account of accountNames) {
+      setAccountOverride(account);
+      try {
+        const result = await doSync({ silent: true });
+        results.push({ account, success: true, node_count: result.nodeCount, synced_at: result.syncedAt });
+      } catch (error) {
+        results.push({ account, success: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+  } finally {
+    setAccountOverride(previousAccount);
+  }
+
+  const failed = results.filter((result) => !result.success);
+  if (isAgentMode()) {
+    console.log(JSON.stringify({
+      meta: { command: "cache:sync", mode: "all_accounts", timestamp: new Date().toISOString(), wf_version: APP_VERSION },
+      success: failed.length === 0,
+      results,
+    }, null, 2));
+  } else {
+    console.log("");
+    for (const result of results) {
+      if (result.success) {
+        console.log(`  ${chalk.green("✓")} ${chalk.bold(result.account)}: ${result.node_count} nodes`);
+      } else {
+        console.log(`  ${chalk.red("✗")} ${chalk.bold(result.account)}: ${result.error}`);
+      }
+    }
+    console.log("");
+  }
+
+  if (failed.length > 0) process.exitCode = 1;
+}
+
 export async function doSync(opts: { silent?: boolean } = {}): Promise<{ nodeCount: number; syncedAt: number }> {
   const token = requireToken();
   const api = new WorkflowyAPI(token);
@@ -82,7 +140,7 @@ export async function doSync(opts: { silent?: boolean } = {}): Promise<{ nodeCou
   if (!silent) {
     if (isAgentMode()) {
       console.log(JSON.stringify({
-        meta: { command: "cache:sync", timestamp: new Date().toISOString(), wf_version: APP_VERSION },
+        meta: { command: "cache:sync", timestamp: new Date().toISOString(), account: getActiveAccountName(), wf_version: APP_VERSION },
         message: `Synced ${nodeCount} nodes`,
         node_count: nodeCount,
         synced_at: syncedAt,
@@ -104,7 +162,7 @@ function showStatus(): void {
 
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "cache:sync", mode: "status", timestamp: new Date().toISOString(), wf_version: APP_VERSION },
+      meta: { command: "cache:sync", mode: "status", timestamp: new Date().toISOString(), account: getActiveAccountName(), wf_version: APP_VERSION },
       last_synced_at: lastSynced,
       node_count: nodeCount,
       cache_age_seconds: ageSeconds,
@@ -141,14 +199,15 @@ function formatAge(seconds: number): string {
 }
 
 async function startDaemon(): Promise<void> {
-  if (existsSync(PID_PATH)) {
-    const existingPid = readFileSync(PID_PATH, "utf-8").trim();
+  const pidPath = getSyncPidPath();
+  if (existsSync(pidPath)) {
+    const existingPid = readFileSync(pidPath, "utf-8").trim();
     try {
       process.kill(Number(existingPid), 0);
       console.log(`\n  Sync daemon already running (PID ${existingPid})\n`);
       return;
     } catch {
-      unlinkSync(PID_PATH);
+      unlinkSync(pidPath);
     }
   }
 
@@ -168,10 +227,10 @@ async function startDaemon(): Promise<void> {
   }
 
   child.unref();
-  writeFileSync(PID_PATH, String(child.pid));
+  writeFileSync(pidPath, String(child.pid));
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "cache:sync", mode: "watch", wf_version: APP_VERSION },
+      meta: { command: "cache:sync", mode: "watch", account: getActiveAccountName(), wf_version: APP_VERSION },
       daemon_running: true,
       daemon_pid: child.pid,
       interval_seconds: SYNC_WATCH_INTERVAL_MS / 1000,
@@ -193,9 +252,10 @@ async function runSyncWatchLoop(): Promise<never> {
 }
 
 function getDaemonStatus(): { running: boolean; pid: number | null; stale: boolean } {
-  if (!existsSync(PID_PATH)) return { running: false, pid: null, stale: false };
+  const pidPath = getSyncPidPath();
+  if (!existsSync(pidPath)) return { running: false, pid: null, stale: false };
 
-  const pid = Number(readFileSync(PID_PATH, "utf-8").trim());
+  const pid = Number(readFileSync(pidPath, "utf-8").trim());
   if (Number.isInteger(pid) && pid > 0) {
     try {
       process.kill(pid, 0);
@@ -205,26 +265,27 @@ function getDaemonStatus(): { running: boolean; pid: number | null; stale: boole
     }
   }
 
-  unlinkSync(PID_PATH);
+  unlinkSync(pidPath);
   return { running: false, pid: Number.isFinite(pid) ? pid : null, stale: true };
 }
 
 function stopDaemon(): void {
-  if (!existsSync(PID_PATH)) {
+  const pidPath = getSyncPidPath();
+  if (!existsSync(pidPath)) {
     console.log("\n  No sync daemon running.\n");
     return;
   }
 
-  const pid = Number(readFileSync(PID_PATH, "utf-8").trim());
+  const pid = Number(readFileSync(pidPath, "utf-8").trim());
   try {
     process.kill(pid);
   } catch {
     // already dead
   }
-  unlinkSync(PID_PATH);
+  unlinkSync(pidPath);
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "cache:sync", mode: "stop", wf_version: APP_VERSION },
+      meta: { command: "cache:sync", mode: "stop", account: getActiveAccountName(), wf_version: APP_VERSION },
       daemon_running: false,
       stopped_pid: pid,
     }, null, 2));
@@ -249,7 +310,7 @@ function resolveSystemTargets(nodes: Awaited<ReturnType<WorkflowyAPI["exportAll"
 }
 
 async function refreshTargetCache(api: WorkflowyAPI): Promise<void> {
-  const account = loadConfig().activeAccount;
+  const account = getActiveAccountName();
   const targets = await api.getTargets();
   const resolvedTargets = [];
 

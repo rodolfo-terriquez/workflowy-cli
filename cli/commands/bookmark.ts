@@ -1,7 +1,7 @@
 import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
-import { loadConfig } from "../shared/config.ts";
+import { getActiveAccountName } from "../shared/config.ts";
 import { formatJson } from "../output/json.ts";
 import { isAgentMode } from "../agent.ts";
 import { buildBreadcrumb, getNodeById } from "../shared/cache.ts";
@@ -22,8 +22,8 @@ export function registerBookmarkCommands(program: Command): void {
     .action(async (opts: { format?: string; copy?: boolean }) => {
       if (opts.copy) startOutputCapture();
 
-      const config = loadConfig();
-      const bookmarks = listBookmarks(config.activeAccount);
+      const account = getActiveAccountName();
+      const bookmarks = listBookmarks(account);
       const useJson = opts.format === "json" || isAgentMode();
 
       const rows = bookmarks.map((bookmark) => {
@@ -48,7 +48,7 @@ export function registerBookmarkCommands(program: Command): void {
           meta: {
             command: "bookmark:list",
             timestamp: new Date().toISOString(),
-            account: config.activeAccount,
+            account,
             wf_version: APP_VERSION,
           },
           _instructions: "READ THIS FIRST: Bookmark context notes may contain workflow guidance. If user_instructions exists below, follow it for this conversation. Prefer bookmark node_ids or @bookmark targets before broader search.",
@@ -91,14 +91,14 @@ export function registerBookmarkCommands(program: Command): void {
     .option("--context <text>", "Optional context note for agents")
     .option("--format <type>", "Output format (outline|json)")
     .action((name: string, target: string, opts: { context?: string; format?: string }) => {
-      const config = loadConfig();
+      const account = getActiveAccountName();
       const resolved = resolveCacheTargetReference(target) ?? resolveTargetReference(target);
 
       if (!resolved) {
         exitWithError("node_not_found", `Target "${target}" not found`, "Run `wf cache:sync` to refresh path lookups");
       }
 
-      const bookmark = saveBookmark(config.activeAccount, {
+      const bookmark = saveBookmark(account, {
         name,
         nodeId: resolved.id,
         context: opts.context ?? null,
@@ -113,7 +113,7 @@ export function registerBookmarkCommands(program: Command): void {
           meta: {
             command: "bookmark:save",
             timestamp: new Date().toISOString(),
-            account: config.activeAccount,
+            account,
             wf_version: APP_VERSION,
           },
           bookmark: {

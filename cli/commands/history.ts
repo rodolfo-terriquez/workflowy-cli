@@ -3,7 +3,7 @@ import type { Command } from "commander";
 import chalk from "chalk";
 import { getAccessHistory } from "../shared/history.ts";
 import { isAgentMode } from "../agent.ts";
-import { loadConfig } from "../shared/config.ts";
+import { getActiveAccountName } from "../shared/config.ts";
 import { startOutputCapture, handleCopyFlag } from "../shared/copy-wrapper.ts";
 
 export function registerHistory(program: Command): void {
@@ -21,13 +21,12 @@ export function registerHistory(program: Command): void {
       const useJson = opts.format === "json" || isAgentMode();
 
       if (useJson) {
-        const config = loadConfig();
         console.log(JSON.stringify({
           meta: {
             command: "history",
             count: history.length,
             timestamp: new Date().toISOString(),
-            account: config.activeAccount,
+            account: getActiveAccountName(),
             wf_version: APP_VERSION,
           },
           entries: history,

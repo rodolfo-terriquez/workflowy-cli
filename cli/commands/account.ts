@@ -1,7 +1,7 @@
 import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
-import { loadConfig, saveConfig } from "../shared/config.ts";
+import { getActiveAccountName, loadConfig, saveConfig } from "../shared/config.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 
@@ -12,6 +12,7 @@ export function registerAccountCommands(program: Command): void {
     .action(() => {
       const config = loadConfig();
       const accounts = Object.keys(config.accounts);
+      const selectedAccount = getActiveAccountName(config);
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
@@ -19,8 +20,10 @@ export function registerAccountCommands(program: Command): void {
           accounts: accounts.map((name) => ({
             name,
             active: name === config.activeAccount,
+            selected: name === selectedAccount,
           })),
           active_account: config.activeAccount,
+          selected_account: selectedAccount,
         }, null, 2));
         return;
       }
@@ -33,9 +36,11 @@ export function registerAccountCommands(program: Command): void {
       console.log("\n  Accounts:\n");
       for (const name of accounts) {
         const active = name === config.activeAccount;
+        const selected = name === selectedAccount;
         const icon = active ? chalk.green("●") : chalk.dim("○");
         const label = active ? chalk.bold(name) : name;
-        console.log(`  ${icon} ${label}${active ? chalk.dim(" (active)") : ""}`);
+        const status = [active ? "active" : null, selected && !active ? "selected" : null].filter(Boolean).join(", ");
+        console.log(`  ${icon} ${label}${status ? chalk.dim(` (${status})`) : ""}`);
       }
       console.log("");
     });
@@ -69,15 +74,17 @@ export function registerAccountCommands(program: Command): void {
     .description("Show active account")
     .action(() => {
       const config = loadConfig();
+      const selectedAccount = getActiveAccountName(config);
 
       if (isAgentMode()) {
         console.log(JSON.stringify({
           meta: { command: "account:current", wf_version: APP_VERSION },
-          active_account: config.activeAccount,
-          has_token: !!config.accounts[config.activeAccount]?.token,
+          active_account: selectedAccount,
+          default_account: config.activeAccount,
+          has_token: !!config.accounts[selectedAccount]?.token,
         }));
       } else {
-        console.log(`\n  Active account: ${chalk.bold(config.activeAccount)}\n`);
+        console.log(`\n  Active account: ${chalk.bold(selectedAccount)}${selectedAccount !== config.activeAccount ? chalk.dim(` (default: ${config.activeAccount})`) : ""}\n`);
       }
     });
 }

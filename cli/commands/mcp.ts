@@ -96,6 +96,7 @@ Before making tool calls, follow this checklist:
 - Cache refresh is normally automatic in MCP sessions; \`sync\` remains available as a manual fallback.
 - \`workflowy_targets\` helps you learn what the account exposes.
 - \`bookmarks\` may include bookmark context notes that help with navigation.
+- Every tool accepts an optional \`account\` name. Use it to read from or write to another configured account without changing the default account.
 - For date-related work, prefer built-in calendar targets such as \`@today\`, \`@tomorrow\`, \`@calendar\`, and \`@next-week\` instead of searching for date nodes by text.
 - To create a clickable date chip in node text or notes, use a literal time tag such as \`<time startYear="2026" startMonth="6" startDay="3">Jun 3, 2026</time>\`. \`startYear\` must be 4 digits; \`startMonth\` and \`startDay\` must not use leading zeroes. Plain-text dates will not render as chips.
 - \`workflowy_context\` is often better than a deep read when you need nearby siblings and ancestors.
@@ -736,11 +737,14 @@ function buildToolInvocation(name: string, args: Record<string, unknown>): McpTo
 
   const cmdArgs = cmdMap[name];
   if (!cmdArgs) return null;
+  const accountArgs = typeof args.account === "string" && args.account.length > 0
+    ? ["--account", args.account]
+    : [];
 
   return {
     name,
     args,
-    cmdArgs,
+    cmdArgs: [...accountArgs, ...cmdArgs],
     usesBatchStdin: name === "workflowy_batch" || name === "batch" || name === "edit_doc" || name === "workflowy_edit_doc",
   };
 }
@@ -831,6 +835,7 @@ async function executeToolInvocation(invocation: McpToolInvocation): Promise<Cli
 }
 
 async function maybePreflightAutoSync(invocation: McpToolInvocation): Promise<void> {
+  if (invocation.args.account) return;
   if (!shouldPreflightCheckCache(invocation)) return;
 
   const blockingReason = getMcpInitializeSyncReason();
@@ -864,6 +869,9 @@ async function maybeRecoverToolCall(
     });
 
     if (liveResult.exitCode === 0 && liveResult.stdout.trim()) {
+      if (invocation.args.account) {
+        return annotateCliExecutionResult(liveResult, { fallback: "live_read" });
+      }
       const liveSyncAttempt = await requestMcpAutoSync(`tool_recovery:live:${invocation.name}`, { blocking: false });
       return annotateCliExecutionResult(liveResult, {
         fallback: "live_read",
@@ -877,6 +885,26 @@ async function maybeRecoverToolCall(
 
   if (!shouldRetryAfterSync(invocation, parsedError)) {
     return null;
+  }
+
+  if (typeof invocation.args.account === "string" && invocation.args.account.length > 0) {
+    const account = invocation.args.account;
+    const syncResult = await executeToolInvocation({
+      name: "sync",
+      args: { account },
+      cmdArgs: ["--account", account, "cache:sync"],
+      usesBatchStdin: false,
+    });
+    if (syncResult.exitCode !== 0) {
+      return annotateCliExecutionResult(result, {
+        auto_sync: { status: "failed", reason: "account_qualified", account },
+      });
+    }
+
+    const retried = await executeToolInvocation(invocation);
+    return annotateCliExecutionResult(retried, {
+      auto_sync: { status: "retried", reason: "account_qualified", account },
+    });
   }
 
   const syncAttempt = await requestMcpAutoSync(`tool_recovery:${invocation.name}`, { blocking: true });
@@ -1401,7 +1429,7 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
         tools: tools.map((t) => ({
           name: t.name,
           description: t.description,
-          inputSchema: t.inputSchema,
+          inputSchema: withAccountSelection(t.inputSchema),
         })),
       },
     };
@@ -1466,6 +1494,22 @@ async function handleMcpMessage(msg: Record<string, unknown>, tools: McpTool[]):
     jsonrpc: "2.0",
     id,
     error: { code: -32601, message: `Method not found: ${method}` },
+  };
+}
+
+function withAccountSelection(inputSchema: Record<string, unknown>): Record<string, unknown> {
+  const properties = inputSchema.properties && typeof inputSchema.properties === "object"
+    ? inputSchema.properties as Record<string, unknown>
+    : {};
+  return {
+    ...inputSchema,
+    properties: {
+      ...properties,
+      account: {
+        type: "string",
+        description: "Configured account name to use for this call without changing the default account",
+      },
+    },
   };
 }
 

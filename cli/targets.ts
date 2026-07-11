@@ -1,5 +1,5 @@
 import type { WorkflowyAPI, WFTarget } from "./shared/api.ts";
-import { loadConfig } from "./shared/config.ts";
+import { getActiveAccountName } from "./shared/config.ts";
 import { getTargetUuid } from "./shared/cache.ts";
 import {
   cacheTargets,
@@ -44,7 +44,7 @@ export function resolveTarget(targetStr: string): ResolvedTarget {
     };
   }
 
-  const account = loadConfig().activeAccount;
+  const account = getActiveAccountName();
   if (getBookmark(account, name)) {
     return {
       id: name,
@@ -63,7 +63,7 @@ export function resolveTarget(targetStr: string): ResolvedTarget {
 
 export function resolveSavedTargetNodeId(targetKey: string): string | null {
   const normalized = normalizeTargetKey(targetKey);
-  const account = loadConfig().activeAccount;
+  const account = getActiveAccountName();
 
   const bookmark = getBookmark(account, normalized);
   if (bookmark) return bookmark.nodeId;
@@ -77,8 +77,7 @@ export function resolveSavedTargetNodeId(targetKey: string): string | null {
 export async function listAllTargets(
   api: WorkflowyAPI
 ): Promise<WFTarget[]> {
-  const config = loadConfig();
-  const account = config.activeAccount;
+  const account = getActiveAccountName();
 
   const cached = getCachedTargets(account);
   if (cached) {

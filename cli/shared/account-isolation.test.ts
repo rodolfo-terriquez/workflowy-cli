@@ -6,6 +6,7 @@ import { join } from "path";
 
 const originalHome = process.env.HOME;
 const originalConfigDir = process.env.WORKFLOWY_CONFIG_DIR;
+const originalAccount = process.env.WORKFLOWY_ACCOUNT;
 const testHome = mkdtempSync(join(tmpdir(), "workflowy-cli-account-"));
 const testConfigDir = join(testHome, ".workflowy");
 
@@ -27,6 +28,7 @@ function cleanupWorkspace(): void {
 beforeAll(async () => {
   process.env.HOME = testHome;
   process.env.WORKFLOWY_CONFIG_DIR = testConfigDir;
+  delete process.env.WORKFLOWY_ACCOUNT;
   configModule = await import("./config.ts");
   cacheModule = await import("./cache.ts");
   dbModule = await import("./db.ts");
@@ -34,6 +36,7 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
+  configModule.setAccountOverride(null);
   cleanupWorkspace();
 });
 
@@ -50,6 +53,12 @@ afterAll(() => {
     delete process.env.WORKFLOWY_CONFIG_DIR;
   } else {
     process.env.WORKFLOWY_CONFIG_DIR = originalConfigDir;
+  }
+
+  if (originalAccount === undefined) {
+    delete process.env.WORKFLOWY_ACCOUNT;
+  } else {
+    process.env.WORKFLOWY_ACCOUNT = originalAccount;
   }
 
   rmSync(testHome, { recursive: true, force: true });
@@ -101,6 +110,16 @@ test("cache metadata and history stay isolated per account", () => {
   expect(historyModule.getAccessHistory()).toEqual([]);
   expect(cacheModule.getLastSyncedAt()).toBeNull();
 
+  cacheModule.replaceAllNodes([
+    {
+      id: "node-test",
+      name: "Test account root",
+      note: null,
+      parent_id: null,
+      modifiedAt: 200,
+    },
+  ]);
+  cacheModule.setTargetUuid("inbox", "node-test");
   historyModule.recordAccess({
     id: "node-test",
     name: "Test account root",
@@ -120,6 +139,86 @@ test("cache metadata and history stay isolated per account", () => {
   expect(cacheModule.getTargetUuid("inbox")).toBe("node-default");
   expect(cacheModule.isTargetDirty("inbox")).toBe(true);
   expect(historyModule.getAccessHistory().map((entry) => entry.id)).toEqual(["node-default"]);
+
+  configModule.saveConfig({
+    activeAccount: "test",
+    accounts: {
+      default: { name: "default", token: "token-default" },
+      test: { name: "test", token: "token-test" },
+    },
+  });
+
+  expect(cacheModule.getCacheNodeCount()).toBe(1);
+  expect(cacheModule.getNodeById("node-test")?.name).toBe("Test account root");
+  expect(cacheModule.getTargetUuid("inbox")).toBe("node-test");
+  expect(historyModule.getAccessHistory().map((entry) => entry.id)).toEqual(["node-test"]);
+});
+
+test("temporary account selection leaves the configured default unchanged", () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: {
+      default: { name: "default", token: "token-default" },
+      work: { name: "work", token: "token-work" },
+    },
+  });
+
+  cacheModule.replaceAllNodes([{ id: "default-root", name: "Default", parent_id: null }]);
+
+  configModule.setAccountOverride("work");
+  cacheModule.replaceAllNodes([{ id: "work-root", name: "Work", parent_id: null }]);
+  expect(configModule.getActiveAccountName()).toBe("work");
+  expect(cacheModule.getNodeById("work-root")?.name).toBe("Work");
+  expect(configModule.loadConfig().activeAccount).toBe("default");
+
+  configModule.setAccountOverride(null);
+  expect(configModule.getActiveAccountName()).toBe("default");
+  expect(cacheModule.getNodeById("default-root")?.name).toBe("Default");
+  expect(cacheModule.getNodeById("work-root")).toBeNull();
+  expect(configModule.getAccountCacheDbPath("default")).not.toBe(configModule.getAccountCacheDbPath("work"));
+});
+
+test("legacy single-account cache migrates into the matching account database", () => {
+  cleanupWorkspace();
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: {
+      default: { name: "default", token: "token-default" },
+      work: { name: "work", token: "token-work" },
+    },
+  });
+
+  const legacyDb = new Database(configModule.getDbPath(), { create: true });
+  legacyDb.exec(`
+    CREATE TABLE nodes (
+      id TEXT PRIMARY KEY,
+      parent_id TEXT,
+      name TEXT NOT NULL DEFAULT '',
+      note TEXT,
+      line_type TEXT,
+      completed INTEGER NOT NULL DEFAULT 0,
+      priority REAL,
+      created_at INTEGER,
+      modified_at INTEGER,
+      synced_at INTEGER NOT NULL
+    );
+    CREATE TABLE cache_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  `);
+  legacyDb.run(
+    "INSERT INTO nodes (id, parent_id, name, synced_at) VALUES (?, ?, ?, ?)",
+    ["legacy-root", null, "Legacy root", 123],
+  );
+  legacyDb.run("INSERT INTO cache_meta (key, value) VALUES (?, ?)", ["cache_account", "default"]);
+  legacyDb.run("INSERT INTO cache_meta (key, value) VALUES (?, ?)", ["account:default:node_count", "1"]);
+  legacyDb.run("INSERT INTO cache_meta (key, value) VALUES (?, ?)", ["account:default:last_synced_at", "123"]);
+  legacyDb.close(false);
+
+  expect(cacheModule.getCacheNodeCount()).toBe(1);
+  expect(cacheModule.getNodeById("legacy-root")?.name).toBe("Legacy root");
+
+  configModule.setAccountOverride("work");
+  expect(cacheModule.getCacheNodeCount()).toBe(0);
+  expect(cacheModule.getNodeById("legacy-root")).toBeNull();
 });
 
 test("config storage uses private directory and file permissions", () => {

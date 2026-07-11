@@ -2,7 +2,7 @@ import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI, type WFNode } from "../shared/api.ts";
-import { requireToken, loadConfig } from "../shared/config.ts";
+import { getActiveAccountName, loadConfig, requireToken } from "../shared/config.ts";
 import { normalizeNode, cleanHtml, parseLlmDocResponse, type FlatNode } from "../shared/nodes.ts";
 import { getCacheNodeCount, getCacheAgeSeconds, isCacheStale } from "../shared/cache.ts";
 import { formatJson } from "../output/json.ts";
@@ -192,7 +192,7 @@ function outputResults(
           query,
           target: target ?? null,
           timestamp: new Date().toISOString(),
-          account: config.activeAccount,
+          account: getActiveAccountName(),
           source,
           smart: source.includes("smart"),
           cache_age_seconds: cacheAge,

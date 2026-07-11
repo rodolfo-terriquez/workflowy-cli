@@ -8,7 +8,7 @@ import { formatJson } from "../output/json.ts";
 import { formatTsv, formatCsv, type TsvRow } from "../shared/output-formats.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
-import { loadConfig } from "../shared/config.ts";
+import { getActiveAccountName } from "../shared/config.ts";
 import { startOutputCapture, handleCopyFlag } from "../shared/copy-wrapper.ts";
 
 export function registerNodeFind(program: Command): void {
@@ -51,14 +51,13 @@ export function registerNodeFind(program: Command): void {
       }
 
       if (format === "json") {
-        const config = loadConfig();
         const cacheAge = getCacheAgeSeconds();
         console.log(formatJson({
           meta: {
             command: "node:find",
             target: pathOrName,
             timestamp: new Date().toISOString(),
-            account: config.activeAccount,
+            account: getActiveAccountName(),
             cache_age_seconds: cacheAge,
             cache_stale: isCacheStale(),
             wf_version: APP_VERSION,

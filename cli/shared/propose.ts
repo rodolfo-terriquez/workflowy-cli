@@ -20,6 +20,7 @@ export interface ProposalOperation {
 
 export interface Proposal {
   id: string;
+  account: string;
   summary: string;
   instruction: string;
   operations: ProposalOperation[];

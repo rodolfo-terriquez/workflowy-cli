@@ -2,7 +2,7 @@ import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
-import { requireToken, loadConfig } from "../shared/config.ts";
+import { getActiveAccountName, requireToken } from "../shared/config.ts";
 import { parseLlmDocResponse, cleanHtml, type FlatNode } from "../shared/nodes.ts";
 import { resolveSavedTargetNodeId, resolveTarget } from "../targets.ts";
 import {
@@ -93,13 +93,12 @@ async function readLive(
   });
 
   if (useJson) {
-    const config = loadConfig();
     const meta: Record<string, unknown> = {
       command: "node:read",
       target: targetStr,
       resolved_id: resolved.id,
       timestamp: new Date().toISOString(),
-      account: config.activeAccount,
+      account: getActiveAccountName(),
       source: "live",
       wf_version: APP_VERSION,
     };
@@ -230,13 +229,12 @@ function readFromCache(
   const stale = isCacheStale();
 
   if (useJson) {
-    const config = loadConfig();
     const meta: Record<string, unknown> = {
       command: "node:read",
       target: targetStr,
       resolved_id: nodeId,
       timestamp: new Date().toISOString(),
-      account: config.activeAccount,
+      account: getActiveAccountName(),
       source: "cache",
       cache_age_seconds: cacheAge,
       cache_stale: stale,

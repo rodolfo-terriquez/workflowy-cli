@@ -4,24 +4,28 @@ import chalk from "chalk";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, readdirSync } from "fs";
 import { join } from "path";
 import { WorkflowyAPI, type LlmDocOperation } from "../shared/api.ts";
-import { requireToken, loadConfig, getConfigDir } from "../shared/config.ts";
+import { getAccountStorageKey, getActiveAccountName, requireToken, getConfigDir } from "../shared/config.ts";
 import { generateProposal, type Proposal, type ProposalOperation } from "../shared/propose.ts";
 import { getCacheAgeSeconds, isCacheStale, markTargetDirty } from "../shared/cache.ts";
 import { formatJson } from "../output/json.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
 
-const PROPOSALS_DIR = join(getConfigDir(), "proposals");
 const PROGRESS_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
+function getProposalsDir(): string {
+  return join(getConfigDir(), "proposals", getAccountStorageKey(getActiveAccountName()));
+}
+
 function ensureProposalsDir(): void {
-  if (!existsSync(PROPOSALS_DIR)) {
-    mkdirSync(PROPOSALS_DIR, { recursive: true });
+  const proposalsDir = getProposalsDir();
+  if (!existsSync(proposalsDir)) {
+    mkdirSync(proposalsDir, { recursive: true });
   }
 }
 
 function getProposalPath(id: string): string {
-  return join(PROPOSALS_DIR, `${id}.json`);
+  return join(getProposalsDir(), `${id}.json`);
 }
 
 function loadProposal(id: string): Proposal | null {
@@ -36,11 +40,12 @@ function loadProposal(id: string): Proposal | null {
 
 function listPendingProposals(): Proposal[] {
   ensureProposalsDir();
-  const files = readdirSync(PROPOSALS_DIR).filter((f) => f.endsWith(".json"));
+  const proposalsDir = getProposalsDir();
+  const files = readdirSync(proposalsDir).filter((f) => f.endsWith(".json"));
   const proposals: Proposal[] = [];
   for (const f of files) {
     try {
-      const data = JSON.parse(readFileSync(join(PROPOSALS_DIR, f), "utf-8")) as Proposal;
+      const data = JSON.parse(readFileSync(join(proposalsDir, f), "utf-8")) as Proposal;
       proposals.push(data);
     } catch {
       // skip invalid files
@@ -67,7 +72,7 @@ export function registerAiCommands(program: Command): void {
     .option("--model <id>", "Override LLM model for this call")
     .action(async (instructions: string, opts: { format?: string; model?: string }) => {
       requireToken();
-      const config = loadConfig();
+      const account = getActiveAccountName();
       const useJson = opts.format === "json" || isAgentMode();
 
       const progress = useJson ? null : startProgress("Generating proposal");
@@ -90,6 +95,7 @@ export function registerAiCommands(program: Command): void {
 
       const proposal: Proposal = {
         id: proposalId,
+        account,
         summary: result.summary,
         instruction: instructions,
         operations: result.operations,
@@ -103,7 +109,7 @@ export function registerAiCommands(program: Command): void {
           meta: {
             command: "ai:propose",
             timestamp: new Date().toISOString(),
-            account: config.activeAccount,
+            account,
             wf_version: APP_VERSION,
           },
           proposal: {
@@ -129,7 +135,7 @@ export function registerAiCommands(program: Command): void {
     .description("Re-show a pending proposal diff")
     .option("--format <type>", "Output format (outline|json)")
     .action((id: string | undefined, opts: { format?: string }) => {
-      const config = loadConfig();
+      const account = getActiveAccountName();
       let proposal: Proposal | null;
 
       if (id) {
@@ -147,7 +153,7 @@ export function registerAiCommands(program: Command): void {
 
       if (useJson) {
         console.log(JSON.stringify({
-          meta: { command: "ai:preview", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: APP_VERSION },
+          meta: { command: "ai:preview", timestamp: new Date().toISOString(), account, wf_version: APP_VERSION },
           proposal: {
             id: proposal.id,
             summary: proposal.summary,
@@ -172,7 +178,7 @@ export function registerAiCommands(program: Command): void {
     .option("--all", "Apply all pending proposals in order")
     .action(async (id: string | undefined, opts: { format?: string; all?: boolean }) => {
       const token = requireToken();
-      const config = loadConfig();
+      const account = getActiveAccountName();
       const api = new WorkflowyAPI(token);
 
       let proposals: Proposal[];
@@ -224,7 +230,7 @@ export function registerAiCommands(program: Command): void {
           const meta: Record<string, unknown> = {
             command: "ai:apply",
             timestamp: new Date().toISOString(),
-            account: config.activeAccount,
+            account,
             wf_version: APP_VERSION,
           };
           const cacheAge = getCacheAgeSeconds();
@@ -253,7 +259,7 @@ export function registerAiCommands(program: Command): void {
     .option("--format <type>", "Output format (outline|json)")
     .option("--all", "Reject all pending proposals")
     .action((id: string | undefined, opts: { format?: string; all?: boolean }) => {
-      const config = loadConfig();
+      const account = getActiveAccountName();
 
       if (opts.all) {
         const all = listPendingProposals();
@@ -264,7 +270,7 @@ export function registerAiCommands(program: Command): void {
 
         if (isAgentMode()) {
           console.log(JSON.stringify({
-            meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: APP_VERSION },
+            meta: { command: "ai:reject", timestamp: new Date().toISOString(), account, wf_version: APP_VERSION },
             message: `Rejected ${all.length} proposals.`,
           }, null, 2));
         } else {
@@ -290,7 +296,7 @@ export function registerAiCommands(program: Command): void {
 
       if (useJson) {
         console.log(JSON.stringify({
-          meta: { command: "ai:reject", timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: APP_VERSION },
+          meta: { command: "ai:reject", timestamp: new Date().toISOString(), account, wf_version: APP_VERSION },
           message: `Proposal ${proposal.id} rejected.`,
         }, null, 2));
       } else {

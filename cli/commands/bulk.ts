@@ -3,7 +3,7 @@ import type { Command } from "commander";
 import chalk from "chalk";
 import { getCacheDb, getCacheNodeCount, getSubtreeIds, buildBreadcrumbDisplay, markTargetDirty, type CachedNode } from "../shared/cache.ts";
 import { WorkflowyAPI, type LlmDocOperation } from "../shared/api.ts";
-import { requireToken, loadConfig } from "../shared/config.ts";
+import { getActiveAccountName, requireToken } from "../shared/config.ts";
 import { cleanHtml } from "../shared/nodes.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
@@ -162,9 +162,8 @@ async function executeBulk(
   }
 
   if (useJson) {
-    const config = loadConfig();
     console.log(JSON.stringify({
-      meta: { command: `node:bulk ${operation}`, timestamp: new Date().toISOString(), account: config.activeAccount, wf_version: APP_VERSION },
+      meta: { command: `node:bulk ${operation}`, timestamp: new Date().toISOString(), account: getActiveAccountName(), wf_version: APP_VERSION },
       message: `${operation}: ${totalOps} nodes affected`,
       success: errors.length === 0,
       total: totalOps,

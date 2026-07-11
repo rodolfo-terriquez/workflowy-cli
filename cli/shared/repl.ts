@@ -2,7 +2,7 @@ import * as readline from "node:readline";
 import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import chalk from "chalk";
-import { getConfigDir, loadConfig } from "./config.ts";
+import { getActiveAccountName, getConfigDir } from "./config.ts";
 import { getCacheDb, getCacheNodeCount } from "./cache.ts";
 import { expandAlias } from "./alias.ts";
 import { getCachedTargets, listBookmarks } from "./db.ts";
@@ -62,7 +62,7 @@ function trimHistoryFile(): void {
 
 function getTargetSlugs(): string[] {
   try {
-    const account = loadConfig().activeAccount;
+    const account = getActiveAccountName();
     const targets = getCachedTargets(account)?.map((target) => `@${target.key}`) ?? [];
     const bookmarks = listBookmarks(account).map((bookmark) => `@${bookmark.name}`);
     return [...new Set([...FALLBACK_TARGET_SLUGS, ...targets, ...bookmarks])].sort();

@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { resetCacheDb, replaceAllNodes, setMeta } from "../shared/cache.ts";
-import { saveConfig } from "../shared/config.ts";
+import { saveConfig, setAccountOverride } from "../shared/config.ts";
 import { cacheTargets, resetDb, saveBookmark } from "../shared/db.ts";
 import { ensureMcpCacheReadyForInitialize, getMcpCliInvocation, getMcpInitializeSyncReason, isAllowedMcpOrigin, isAuthorizedMcpHttpRequest } from "./mcp.ts";
 
@@ -61,6 +61,7 @@ function parseJsonLine<T>(stdout: string): T {
 
 async function withTempWorkflowyConfig<T>(fn: (configDir: string) => Promise<T>): Promise<T> {
   const previousDir = process.env.WORKFLOWY_CONFIG_DIR;
+  const previousAccount = process.env.WORKFLOWY_ACCOUNT;
   const configDir = mkdtempSync(join(tmpdir(), "workflowy-cli-mcp-"));
   process.env.WORKFLOWY_CONFIG_DIR = configDir;
   resetCacheDb();
@@ -151,12 +152,18 @@ async function withTempWorkflowyConfig<T>(fn: (configDir: string) => Promise<T>)
 
     return await fn(configDir);
   } finally {
+    setAccountOverride(null);
     resetCacheDb();
     resetDb();
     if (previousDir === undefined) {
       delete process.env.WORKFLOWY_CONFIG_DIR;
     } else {
       process.env.WORKFLOWY_CONFIG_DIR = previousDir;
+    }
+    if (previousAccount === undefined) {
+      delete process.env.WORKFLOWY_ACCOUNT;
+    } else {
+      process.env.WORKFLOWY_ACCOUNT = previousAccount;
     }
     rmSync(configDir, { recursive: true, force: true });
   }
@@ -571,6 +578,7 @@ test("tools/list explains nested outline writes and batch markdown limits", asyn
     expect(batchTool?.description).toContain("Markdown-style text is converted to Workflowy rich text");
     expect(batchTool?.description).toContain("nested outlines should use edit_doc");
     expect(batchTool?.inputSchema.properties?.ops?.description).toContain("use edit_doc for nested child bullets");
+    expect(batchTool?.inputSchema.properties?.account?.description).toContain("Configured account name");
 
     const editDocTool = response.result.tools.find((tool) => tool.name === "edit_doc");
     expect(editDocTool).toBeDefined();
@@ -626,6 +634,48 @@ test("returns non-empty MCP tool content for cache-backed reads", async () => {
     expect(response.result.content[0]?.type).toBe("text");
     expect(response.result.content[0]?.text).toContain("\"command\": \"search\"");
     expect(response.result.content[0]?.text).toContain("Search target");
+  });
+});
+
+test("routes an account-qualified MCP read to that account's retained cache", async () => {
+  await withTempWorkflowyConfig(async (configDir) => {
+    saveConfig({
+      activeAccount: "default",
+      accounts: {
+        default: { name: "default", token: "token-default" },
+        work: { name: "work", token: "token-work" },
+      },
+    });
+    setAccountOverride("work");
+    replaceAllNodes([{ id: "work-root", name: "Work root", parent_id: null }]);
+    setAccountOverride(null);
+
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 22,
+      method: "tools/call",
+      params: {
+        name: "workflowy_read",
+        arguments: { account: "work", target: "work-root" },
+      },
+    });
+
+    const { code, stdout, stderr } = await runMcpServer(`${message}\n`, {
+      WORKFLOWY_CONFIG_DIR: configDir,
+    });
+
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+    const response = parseJsonLine<{
+      result: { isError?: boolean; content: Array<{ text: string }> };
+    }>(stdout);
+    const payload = JSON.parse(response.result.content[0]?.text ?? "{}") as {
+      meta?: { account?: string };
+      node?: { id?: string; name?: string };
+    };
+    expect(response.result.isError).toBe(false);
+    expect(payload.meta?.account).toBe("work");
+    expect(payload.node).toMatchObject({ id: "work-root", name: "Work root" });
   });
 });
 

@@ -1,4 +1,4 @@
-import { loadConfig } from "./config.ts";
+import { getActiveAccountName, loadConfig } from "./config.ts";
 import { normalizeLlmDocOperationMarkdown } from "./markdown.ts";
 import {
   extractRetryAfterMs,
@@ -72,7 +72,7 @@ export class WorkflowyAPI {
   private token: string;
   private accountName: string;
 
-  constructor(token: string, accountName = loadConfig().activeAccount) {
+  constructor(token: string, accountName = getActiveAccountName()) {
     this.token = token;
     this.accountName = accountName;
   }

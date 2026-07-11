@@ -1,4 +1,5 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
+import { Buffer } from "node:buffer";
 import { homedir } from "os";
 import { join } from "path";
 
@@ -41,6 +42,8 @@ export interface WFConfig {
   [key: string]: unknown;
 }
 
+let accountOverride: string | null = null;
+
 function resolveConfigDir(): string {
   return process.env.WORKFLOWY_CONFIG_DIR || join(homedir(), ".workflowy");
 }
@@ -77,6 +80,16 @@ export function getDbDir(): string {
 
 export function getDbPath(): string {
   return join(getDbDir(), "wf.sqlite");
+}
+
+export function getAccountStorageKey(accountName: string): string {
+  return Buffer.from(accountName, "utf-8").toString("base64url") || "default";
+}
+
+export function getAccountCacheDbPath(accountName: string): string {
+  const accountDbDir = join(getDbDir(), "accounts");
+  secureDirectory(accountDbDir);
+  return join(accountDbDir, `account-${getAccountStorageKey(accountName)}.sqlite`);
 }
 
 export function loadConfig(): WFConfig {
@@ -138,12 +151,25 @@ export function redactConfigValue(value: unknown): unknown {
 }
 
 export function getActiveAccount(config: WFConfig): AccountConfig | null {
-  return config.accounts[config.activeAccount] ?? null;
+  return config.accounts[getActiveAccountName(config)] ?? null;
+}
+
+export function setAccountOverride(accountName: string | null): void {
+  accountOverride = accountName;
+  if (accountName) {
+    process.env.WORKFLOWY_ACCOUNT = accountName;
+  } else {
+    delete process.env.WORKFLOWY_ACCOUNT;
+  }
+}
+
+export function getActiveAccountName(config = loadConfig()): string {
+  return accountOverride || process.env.WORKFLOWY_ACCOUNT || config.activeAccount || "default";
 }
 
 export function getToken(accountName?: string): string | null {
   const config = loadConfig();
-  const name = accountName ?? config.activeAccount;
+  const name = accountName ?? getActiveAccountName(config);
   return config.accounts[name]?.token ?? null;
 }
 

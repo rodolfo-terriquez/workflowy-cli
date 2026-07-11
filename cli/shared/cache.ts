@@ -1,28 +1,28 @@
 import { Database } from "bun:sqlite";
-import { getDbPath, loadConfig } from "./config.ts";
+import { existsSync } from "fs";
+import { getAccountCacheDbPath, getActiveAccountName, getDbPath } from "./config.ts";
 import { cleanHtml } from "./nodes.ts";
 
-let _db: Database | null = null;
+const accountDbs = new Map<string, Database>();
 
-export function getCacheDb(): Database {
-  if (!_db) {
-    _db = new Database(getDbPath(), { create: true });
-    _db.exec("PRAGMA busy_timeout = 5000");
-    _db.exec("PRAGMA journal_mode = WAL");
-    initCacheSchema(_db);
+export function getCacheDb(accountName = getActiveAccountName()): Database {
+  let db = accountDbs.get(accountName);
+  if (!db) {
+    db = new Database(getAccountCacheDbPath(accountName), { create: true });
+    db.exec("PRAGMA busy_timeout = 5000");
+    db.exec("PRAGMA journal_mode = WAL");
+    initCacheSchema(db);
+    migrateLegacyCache(db, accountName);
+    accountDbs.set(accountName, db);
   }
-  return _db;
+  return db;
 }
 
 export function resetCacheDb(): void {
-  if (_db) {
-    _db.close(false);
-    _db = null;
+  for (const db of accountDbs.values()) {
+    db.close(false);
   }
-}
-
-function getActiveAccountName(): string {
-  return loadConfig().activeAccount || "default";
+  accountDbs.clear();
 }
 
 function getScopedMetaKey(key: string, account = getActiveAccountName()): string {
@@ -92,6 +92,76 @@ function initCacheSchema(db: Database): void {
     `);
   } catch {
     // Older SQLite builds may not have the trigram tokenizer available.
+  }
+}
+
+function migrateLegacyCache(db: Database, accountName: string): void {
+  const marker = db.query("SELECT value FROM cache_meta WHERE key = ?").get("legacy_cache_migrated") as { value: string } | null;
+  if (marker || !existsSync(getDbPath())) return;
+
+  let legacyDb: Database | null = null;
+  try {
+    legacyDb = new Database(getDbPath(), { create: false, readonly: true });
+    const tables = legacyDb.query(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('nodes', 'cache_meta')"
+    ).all() as Array<{ name: string }>;
+    if (tables.length < 2) {
+      db.run("INSERT OR REPLACE INTO cache_meta (key, value) VALUES (?, ?)", ["legacy_cache_migrated", "1"]);
+      return;
+    }
+
+    const legacyAccount = legacyDb.query("SELECT value FROM cache_meta WHERE key = ?")
+      .get("cache_account") as { value: string } | null;
+    const existingCount = db.query("SELECT COUNT(*) AS count FROM nodes").get() as { count: number };
+
+    if (legacyAccount?.value === accountName && existingCount.count === 0) {
+      const nodes = legacyDb.query("SELECT * FROM nodes").all() as CachedNode[];
+      const metaRows = legacyDb.query("SELECT key, value FROM cache_meta").all() as Array<{ key: string; value: string }>;
+      const scopedPrefix = `account:${accountName}:`;
+
+      const migrate = db.transaction(() => {
+        const insertNode = db.query(`
+          INSERT OR REPLACE INTO nodes
+            (id, parent_id, name, note, line_type, completed, priority, created_at, modified_at, synced_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const node of nodes) {
+          insertNode.run(
+            node.id,
+            node.parent_id,
+            node.name,
+            node.note,
+            node.line_type,
+            node.completed,
+            node.priority,
+            node.created_at,
+            node.modified_at,
+            node.synced_at,
+          );
+        }
+
+        const insertMeta = db.query("INSERT OR REPLACE INTO cache_meta (key, value) VALUES (?, ?)");
+        for (const row of metaRows) {
+          if (row.key === "cache_account" || row.key.startsWith(scopedPrefix)) {
+            insertMeta.run(row.key, row.value);
+          }
+        }
+
+        db.run("INSERT INTO nodes_fts(nodes_fts) VALUES('rebuild')");
+        try {
+          db.run("INSERT INTO nodes_trigram(nodes_trigram) VALUES('rebuild')");
+        } catch {
+          // Trigram index is optional.
+        }
+      });
+      migrate();
+    }
+
+    db.run("INSERT OR REPLACE INTO cache_meta (key, value) VALUES (?, ?)", ["legacy_cache_migrated", "1"]);
+  } catch {
+    // Leave the marker unset so a transient read failure can be retried.
+  } finally {
+    legacyDb?.close(false);
   }
 }
 

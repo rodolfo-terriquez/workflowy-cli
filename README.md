@@ -495,6 +495,8 @@ MCP client config example:
 
 Run `wf login` and `wf cache:sync` first. The MCP server uses the same local config and cache as the CLI.
 
+Start an account-pinned server with `wf --account work mcp`, or pass the optional `account` field on any MCP tool call to select a configured account per operation. This allows one agent session to read from one account and write to another while each account keeps its own cache.
+
 MCP exposes friendly tools for common tasks (`read`, `search`, `add`, `batch`) plus `edit_doc` for structured nested outline edits. Prefer `edit_doc` when writing sections, subpoints, or multi-bullet content; use `batch` for flat grouped changes. `edit_doc` maps back to the CLI `doc:edit` command, so the CLI remains the canonical implementation.
 
 #### MCP instructions
@@ -606,10 +608,27 @@ wf config:alias remove today-todos
 Accounts:
 
 ```bash
+wf login --account personal
+wf login --account work
 wf account:list
 wf account:switch work
 wf account:current
 ```
+
+Each account keeps its own SQLite cache under `~/.workflowy/db/accounts/`. Switching accounts no longer discards another account's synced tree or requires an immediate re-sync.
+
+Use `--account <name>` to select an account for one command without changing the configured default:
+
+```bash
+wf --account personal cache:sync
+wf --account work cache:sync
+wf cache:sync --all-accounts
+
+wf --account personal read @projects --format json
+wf --account work add @inbox "Follow up from personal account"
+```
+
+This makes cross-account automations explicit: read from one retained cache, then write with the destination account's token. Account-qualified sync and watch daemons also use separate PID files, so multiple accounts can stay warm concurrently.
 
 ## Development
 

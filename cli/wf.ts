@@ -60,6 +60,8 @@ import { registerLogin } from "./commands/login.ts";
 import { registerMcp } from "./commands/mcp.ts";
 import { registerSelfUpdate } from "./commands/self-update.ts";
 import { registerVersion } from "./commands/version.ts";
+import { loadConfig, setAccountOverride } from "./shared/config.ts";
+import { exitWithError } from "./shared/errors.ts";
 import { getRuntimeVersionInfo } from "./shared/version.ts";
 
 const VERSION = getRuntimeVersionInfo().appVersion;
@@ -186,6 +188,7 @@ function printColoredHelp(): void {
 
   console.log(`  ${w("Common Options")}`);
   console.log(`    ${c("--agent".padEnd(28))} ${dim("JSON output, no colors")}`);
+  console.log(`    ${c("--account <name>".padEnd(28))} ${dim("Use an account for this command without switching")}`);
   console.log(`    ${c("--live".padEnd(28))} ${dim("Bypass local cache on commands that support it")}`);
   console.log(`    ${c("--copy".padEnd(28))} ${dim("Copy output to clipboard")}`);
   console.log(`    ${c("--format json|tsv|csv".padEnd(28))} ${dim("Structured output where supported")}`);
@@ -203,10 +206,23 @@ program
   .showHelpAfterError("\nRun `wf --help` to see available commands.")
   .option("-v, --version", "Show version number")
   .option("--agent", "Enable agent mode (JSON output, no colors)")
+  .option("--account <name>", "Use an account for this command without changing the active account")
   .option("--copy", "Copy output to clipboard")
   .hook("preAction", () => {
-    if (program.opts().agent) {
+    const opts = program.opts<{ agent?: boolean; account?: string }>();
+    if (opts.agent) {
       setAgentMode(true);
+    }
+    if (opts.account) {
+      const config = loadConfig();
+      if (!(opts.account in config.accounts)) {
+        exitWithError(
+          "account_not_found",
+          `Account "${opts.account}" not found`,
+          `Available: ${Object.keys(config.accounts).join(", ") || "none — run wf login --account <name> first"}`,
+        );
+      }
+      setAccountOverride(opts.account);
     }
   });
 

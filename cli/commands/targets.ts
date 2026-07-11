@@ -2,7 +2,7 @@ import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
-import { requireToken, loadConfig } from "../shared/config.ts";
+import { getActiveAccountName, requireToken } from "../shared/config.ts";
 import { cleanHtml } from "../shared/nodes.ts";
 import { listAllTargets } from "../targets.ts";
 import { formatJson } from "../output/json.ts";
@@ -24,13 +24,12 @@ export function registerTargets(program: Command): void {
       const useJson = opts.format === "json" || isAgentMode();
 
       if (useJson) {
-        const config = loadConfig();
         console.log(
           formatJson({
             meta: {
               command: "targets",
               timestamp: new Date().toISOString(),
-              account: config.activeAccount,
+              account: getActiveAccountName(),
               wf_version: APP_VERSION,
             },
             nodes: targets.map((t) => ({

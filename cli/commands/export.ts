@@ -1,7 +1,7 @@
 import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import { WorkflowyAPI } from "../shared/api.ts";
-import { requireToken, loadConfig } from "../shared/config.ts";
+import { getActiveAccountName, requireToken } from "../shared/config.ts";
 import { parseLlmDocResponse, type FlatNode } from "../shared/nodes.ts";
 import { formatOutline } from "../output/compact.ts";
 import { formatJson } from "../output/json.ts";
@@ -48,7 +48,6 @@ export function registerExport(program: Command): void {
 
         switch (format) {
           case "json": {
-            const config = loadConfig();
             console.log(
               formatJson({
                 meta: {
@@ -56,7 +55,7 @@ export function registerExport(program: Command): void {
                   target,
                   resolved_id: resolved.id,
                   timestamp: new Date().toISOString(),
-                  account: config.activeAccount,
+                  account: getActiveAccountName(),
                   wf_version: APP_VERSION,
                 },
               node: {

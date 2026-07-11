@@ -5,7 +5,7 @@ import { writeFileSync, readFileSync, existsSync, unlinkSync } from "fs";
 import { join } from "path";
 import { platform } from "os";
 import { WorkflowyAPI } from "../shared/api.ts";
-import { requireToken, getConfigDir } from "../shared/config.ts";
+import { getAccountStorageKey, getActiveAccountName, requireToken, getConfigDir } from "../shared/config.ts";
 import { getCacheDb, replaceAllNodes, getCacheNodeCount } from "../shared/cache.ts";
 import { resolveSavedTargetNodeId, resolveTarget } from "../targets.ts";
 import { cleanHtml } from "../shared/nodes.ts";
@@ -14,8 +14,11 @@ import { exitWithError } from "../shared/errors.ts";
 import { getMinimumWatchIntervalMs } from "../shared/rate-limit.ts";
 import { getSelfCliInvocation } from "../shared/runtime.ts";
 
-const PID_PATH = join(getConfigDir(), "watch.pid");
 const WEBHOOKS_PATH = join(getConfigDir(), "webhooks.json");
+
+function getWatchPidPath(): string {
+  return join(getConfigDir(), `watch-${getAccountStorageKey(getActiveAccountName())}.pid`);
+}
 
 interface ChangeEvent {
   event: "added" | "modified" | "deleted";
@@ -94,13 +97,14 @@ export function registerWatch(program: Command): void {
     .command("watch:stop")
     .description("Stop the watch daemon")
     .action(() => {
-      if (!existsSync(PID_PATH)) {
+      const pidPath = getWatchPidPath();
+      if (!existsSync(pidPath)) {
         console.log("\n  No watch daemon running.\n");
         return;
       }
-      const pid = Number(readFileSync(PID_PATH, "utf-8").trim());
+      const pid = Number(readFileSync(pidPath, "utf-8").trim());
       try { process.kill(pid); } catch { /* already dead */ }
-      unlinkSync(PID_PATH);
+      unlinkSync(pidPath);
       console.log(`\n  ${chalk.green("✓")} Watch daemon stopped.\n`);
     });
 
@@ -108,26 +112,27 @@ export function registerWatch(program: Command): void {
     .command("watch:status")
     .description("Show watch daemon status")
     .action(() => {
-      if (!existsSync(PID_PATH)) {
+      const pidPath = getWatchPidPath();
+      if (!existsSync(pidPath)) {
         if (isAgentMode()) {
-          console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: APP_VERSION }, running: false }));
+          console.log(JSON.stringify({ meta: { command: "watch:status", account: getActiveAccountName(), wf_version: APP_VERSION }, running: false }));
         } else {
           console.log("\n  Watch daemon: not running.\n");
         }
         return;
       }
-      const pid = Number(readFileSync(PID_PATH, "utf-8").trim());
+      const pid = Number(readFileSync(pidPath, "utf-8").trim());
       if (Number.isNaN(pid) || !isProcessRunning(pid)) {
-        unlinkSync(PID_PATH);
+        unlinkSync(pidPath);
         if (isAgentMode()) {
-          console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: APP_VERSION }, running: false }));
+          console.log(JSON.stringify({ meta: { command: "watch:status", account: getActiveAccountName(), wf_version: APP_VERSION }, running: false }));
         } else {
           console.log("\n  Watch daemon: not running.\n");
         }
         return;
       }
       if (isAgentMode()) {
-        console.log(JSON.stringify({ meta: { command: "watch:status", wf_version: APP_VERSION }, running: true, pid }));
+        console.log(JSON.stringify({ meta: { command: "watch:status", account: getActiveAccountName(), wf_version: APP_VERSION }, running: true, pid }));
       } else {
         console.log(`\n  Watch daemon: running (PID ${pid})\n`);
       }
@@ -135,14 +140,15 @@ export function registerWatch(program: Command): void {
 }
 
 async function startDaemonMode(interval: string, extraArgs: string[]): Promise<void> {
-  if (existsSync(PID_PATH)) {
-    const existingPid = readFileSync(PID_PATH, "utf-8").trim();
+  const pidPath = getWatchPidPath();
+  if (existsSync(pidPath)) {
+    const existingPid = readFileSync(pidPath, "utf-8").trim();
     try {
       process.kill(Number(existingPid), 0);
       console.log(`\n  Watch daemon already running (PID ${existingPid})\n`);
       return;
     } catch {
-      unlinkSync(PID_PATH);
+      unlinkSync(pidPath);
     }
   }
 
@@ -166,10 +172,10 @@ async function startDaemonMode(interval: string, extraArgs: string[]): Promise<v
   }
 
   child.unref();
-  writeFileSync(PID_PATH, String(child.pid));
+  writeFileSync(pidPath, String(child.pid));
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "watch:start", wf_version: APP_VERSION },
+      meta: { command: "watch:start", account: getActiveAccountName(), wf_version: APP_VERSION },
       running: true,
       pid: child.pid,
       interval,

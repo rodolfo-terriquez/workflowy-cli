@@ -5,6 +5,7 @@ import { join } from "path";
 
 const originalHome = process.env.HOME;
 const originalConfigDir = process.env.WORKFLOWY_CONFIG_DIR;
+const originalAccount = process.env.WORKFLOWY_ACCOUNT;
 const testHome = mkdtempSync(join(tmpdir(), "workflowy-cli-command-scope-"));
 const testConfigDir = join(testHome, ".workflowy");
 
@@ -16,6 +17,7 @@ let doctorModule: typeof import("./doctor.ts");
 beforeAll(async () => {
   process.env.HOME = testHome;
   process.env.WORKFLOWY_CONFIG_DIR = testConfigDir;
+  delete process.env.WORKFLOWY_ACCOUNT;
   configModule = await import("../shared/config.ts");
   cacheModule = await import("../shared/cache.ts");
   dbModule = await import("../shared/db.ts");
@@ -23,6 +25,7 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
+  configModule.setAccountOverride(null);
   cacheModule.resetCacheDb();
   dbModule.resetDb();
 
@@ -46,6 +49,12 @@ afterAll(() => {
     delete process.env.WORKFLOWY_CONFIG_DIR;
   } else {
     process.env.WORKFLOWY_CONFIG_DIR = originalConfigDir;
+  }
+
+  if (originalAccount === undefined) {
+    delete process.env.WORKFLOWY_ACCOUNT;
+  } else {
+    process.env.WORKFLOWY_ACCOUNT = originalAccount;
   }
 
   rmSync(testHome, { recursive: true, force: true });
@@ -107,6 +116,12 @@ test("sync alias resolves to cache:sync status mode without hitting the API", as
   const parsed = JSON.parse(result.stdout) as { meta: { command: string; mode: string } };
   expect(parsed.meta.command).toBe("cache:sync");
   expect(parsed.meta.mode).toBe("status");
+});
+
+test("sync --all-accounts reports a structured error when no accounts are configured", async () => {
+  const result = await runCli(["--agent", "sync", "--all-accounts"]);
+  expect(result.exitCode).toBe(1);
+  expect(JSON.parse(result.stdout).error.code).toBe("account_not_found");
 });
 
 test("bookmarks alias resolves to bookmark:list", async () => {
@@ -429,6 +444,43 @@ test("path traversal refuses ambiguous partial child matches", async () => {
   const result = await runCli(["--agent", "read", "@inbox/Project"]);
   expect(result.exitCode).toBe(1);
   expect(JSON.parse(result.stdout).error.code).toBe("node_not_found");
+});
+
+test("--account reads another retained cache without switching the configured default", async () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: {
+      default: { name: "default", token: "token-default" },
+      work: { name: "work", token: "token-work" },
+    },
+  });
+  cacheModule.replaceAllNodes([{ id: "default-root", name: "Default root", parent_id: null }]);
+
+  configModule.setAccountOverride("work");
+  cacheModule.replaceAllNodes([{ id: "work-root", name: "Work root", parent_id: null }]);
+  configModule.setAccountOverride(null);
+
+  const result = await runCli(["--account", "work", "--agent", "read", "work-root"]);
+  expect(result.exitCode).toBe(0);
+  const parsed = JSON.parse(result.stdout) as { meta: { account: string }; node: { id: string; name: string } };
+  expect(parsed.meta.account).toBe("work");
+  expect(parsed.node).toMatchObject({ id: "work-root", name: "Work root" });
+  expect(configModule.loadConfig().activeAccount).toBe("default");
+
+  const defaultResult = await runCli(["--agent", "read", "default-root"]);
+  expect(defaultResult.exitCode).toBe(0);
+  expect(JSON.parse(defaultResult.stdout).meta.account).toBe("default");
+});
+
+test("--account rejects unknown account names before command execution", async () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: { default: { name: "default", token: "token-default" } },
+  });
+
+  const result = await runCli(["--account", "missing", "--agent", "account:current"]);
+  expect(result.exitCode).toBe(1);
+  expect(JSON.parse(result.stdout).error.code).toBe("account_not_found");
 });
 
 async function runCli(

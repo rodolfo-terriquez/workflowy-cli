@@ -1,7 +1,7 @@
 import { APP_VERSION } from "./version.ts";
 import type { JsonOutput } from "../output/json.ts";
 import { getCacheAgeSeconds, isCacheStale } from "./cache.ts";
-import { loadConfig } from "./config.ts";
+import { getActiveAccountName } from "./config.ts";
 
 const WF_VERSION = APP_VERSION;
 
@@ -20,11 +20,10 @@ interface BuildWriteSuccessOutputOptions {
 }
 
 export function buildWriteSuccessOutput(options: BuildWriteSuccessOutputOptions): JsonOutput {
-  const config = loadConfig();
   const meta: Record<string, unknown> = {
     command: options.command,
     timestamp: new Date().toISOString(),
-    account: config.activeAccount,
+    account: getActiveAccountName(),
     wf_version: WF_VERSION,
   };
 
