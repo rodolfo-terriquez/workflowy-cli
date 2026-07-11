@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { join, resolve } from "path";
 import {
   findWorkflowyRepoRoot,
   findWorkflowyRepoRootFromArgv,
@@ -47,17 +47,24 @@ test("findWorkflowyRepoRoot walks up from a built binary path", () => {
 });
 
 test("getSelfUpdateCandidates includes executable, argv entry, cwd, and module dir", () => {
+  const root = join(tmpdir(), "workflowy-cli");
+  const executable = join(root, "dist", "wf");
+  const cwd = join(tmpdir(), "current");
+  const argvEntry = join(root, "cli", "wf.ts");
+  const moduleDir = join(root, "cli");
   const candidates = getSelfUpdateCandidates(
-    "/tmp/workflowy-cli/dist/wf",
-    "/tmp/current",
-    ["wf", "/tmp/workflowy-cli/cli/wf.ts"],
-    "/tmp/workflowy-cli/cli",
+    executable,
+    cwd,
+    ["wf", argvEntry],
+    moduleDir,
   );
 
-  expect(candidates).toContain("/tmp/workflowy-cli/dist/wf");
-  expect(candidates).toContain("/tmp/workflowy-cli/cli/wf.ts");
-  expect(candidates).toContain("/tmp/current");
-  expect(candidates).toContain("/tmp/workflowy-cli/cli");
+  expect(candidates).toEqual([
+    resolve(argvEntry),
+    resolve(executable),
+    resolve(moduleDir),
+    resolve(cwd),
+  ]);
 });
 
 test("splitCommandLine handles quoted arguments", () => {
