@@ -152,6 +152,7 @@ async function startDaemonMode(interval: string, extraArgs: string[]): Promise<v
     getSelfCliInvocation(["watch:start", "--interval", interval, ...extraArgs]),
     {
       stdio: ["ignore", "ignore", "ignore"],
+      detached: true,
       env: { ...process.env, WF_AGENT: "1" },
     }
   );

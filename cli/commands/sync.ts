@@ -156,6 +156,7 @@ async function startDaemon(): Promise<void> {
 
   const child = Bun.spawn(getSelfCliInvocation(["cache:sync", "--watch-loop"]), {
     stdio: ["ignore", "ignore", "ignore"],
+    detached: true,
   });
 
   const startup = await Promise.race([
