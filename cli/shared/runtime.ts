@@ -5,7 +5,10 @@ interface SelfInvocationOptions {
 }
 
 export function isBundledRuntime(mainPath = Bun.main): boolean {
-  return !mainPath || mainPath.startsWith("/$bunfs/") || mainPath.includes("$bunfs");
+  if (!mainPath) return true;
+
+  const normalizedPath = mainPath.replaceAll("\\", "/");
+  return /(?:^|\/)(?:\$bunfs|~bun)(?:\/|$)/i.test(normalizedPath);
 }
 
 export function getSelfCliInvocation(

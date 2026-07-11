@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { tokenizeCommandLine } from "./argv.ts";
-import { getSelfCliInvocation } from "./runtime.ts";
+import { getSelfCliInvocation, isBundledRuntime } from "./runtime.ts";
 
 test("tokenizeCommandLine preserves quoted and escaped arguments", () => {
   expect(tokenizeCommandLine('node:add @inbox "two words" path\\ with\\ spaces')).toEqual([
@@ -27,4 +27,18 @@ test("getSelfCliInvocation uses source with Bun and self for compiled binaries",
     mainPath: "/$bunfs/root/cli/wf.ts",
     execPath: "/usr/local/bin/wf",
   })).toEqual(["/usr/local/bin/wf", "--agent", "version"]);
+
+  expect(getSelfCliInvocation(["version"], {
+    agent: true,
+    mainPath: "B:/~BUN/root/cli/wf.ts",
+    execPath: "D:\\a\\workflowy-cli\\dist\\wf.exe",
+  })).toEqual(["D:\\a\\workflowy-cli\\dist\\wf.exe", "--agent", "version"]);
+});
+
+test("isBundledRuntime recognizes Bun executable paths on every platform", () => {
+  expect(isBundledRuntime("/$bunfs/root/cli/wf.ts")).toBe(true);
+  expect(isBundledRuntime("B:/~BUN/root/cli/wf.ts")).toBe(true);
+  expect(isBundledRuntime("B:\\~BUN\\root\\cli\\wf.ts")).toBe(true);
+  expect(isBundledRuntime("/repo/cli/wf.ts")).toBe(false);
+  expect(isBundledRuntime("C:\\repo\\cli\\wf.ts")).toBe(false);
 });
