@@ -4,7 +4,7 @@ import chalk from "chalk";
 import { writeFileSync, readFileSync, existsSync, unlinkSync } from "fs";
 import { join } from "path";
 import { WorkflowyAPI } from "../shared/api.ts";
-import { getAccountStorageKey, getActiveAccountName, loadConfig, requireToken, getConfigDir, setAccountOverride } from "../shared/config.ts";
+import { getAccountStorageKey, getActiveAccountName, getApiEnvironment, loadConfig, requireToken, getConfigDir, setAccountOverride } from "../shared/config.ts";
 import {
   replaceAllNodes,
   getLastSyncedAt,
@@ -101,7 +101,7 @@ async function syncAllAccounts(): Promise<void> {
   const failed = results.filter((result) => !result.success);
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "cache:sync", mode: "all_accounts", timestamp: new Date().toISOString(), wf_version: APP_VERSION },
+      meta: { command: "cache:sync", mode: "all_accounts", timestamp: new Date().toISOString(), api_environment: getApiEnvironment(), wf_version: APP_VERSION },
       success: failed.length === 0,
       results,
     }, null, 2));
@@ -140,7 +140,7 @@ export async function doSync(opts: { silent?: boolean } = {}): Promise<{ nodeCou
   if (!silent) {
     if (isAgentMode()) {
       console.log(JSON.stringify({
-        meta: { command: "cache:sync", timestamp: new Date().toISOString(), account: getActiveAccountName(), wf_version: APP_VERSION },
+        meta: { command: "cache:sync", timestamp: new Date().toISOString(), account: getActiveAccountName(), api_environment: getApiEnvironment(), wf_version: APP_VERSION },
         message: `Synced ${nodeCount} nodes`,
         node_count: nodeCount,
         synced_at: syncedAt,
@@ -162,7 +162,7 @@ function showStatus(): void {
 
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "cache:sync", mode: "status", timestamp: new Date().toISOString(), account: getActiveAccountName(), wf_version: APP_VERSION },
+      meta: { command: "cache:sync", mode: "status", timestamp: new Date().toISOString(), account: getActiveAccountName(), api_environment: getApiEnvironment(), wf_version: APP_VERSION },
       last_synced_at: lastSynced,
       node_count: nodeCount,
       cache_age_seconds: ageSeconds,
@@ -230,7 +230,7 @@ async function startDaemon(): Promise<void> {
   writeFileSync(pidPath, String(child.pid));
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "cache:sync", mode: "watch", account: getActiveAccountName(), wf_version: APP_VERSION },
+      meta: { command: "cache:sync", mode: "watch", account: getActiveAccountName(), api_environment: getApiEnvironment(), wf_version: APP_VERSION },
       daemon_running: true,
       daemon_pid: child.pid,
       interval_seconds: SYNC_WATCH_INTERVAL_MS / 1000,
@@ -285,7 +285,7 @@ function stopDaemon(): void {
   unlinkSync(pidPath);
   if (isAgentMode()) {
     console.log(JSON.stringify({
-      meta: { command: "cache:sync", mode: "stop", account: getActiveAccountName(), wf_version: APP_VERSION },
+      meta: { command: "cache:sync", mode: "stop", account: getActiveAccountName(), api_environment: getApiEnvironment(), wf_version: APP_VERSION },
       daemon_running: false,
       stopped_pid: pid,
     }, null, 2));

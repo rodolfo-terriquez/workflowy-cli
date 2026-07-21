@@ -7,6 +7,7 @@ import { join } from "path";
 const originalHome = process.env.HOME;
 const originalConfigDir = process.env.WORKFLOWY_CONFIG_DIR;
 const originalAccount = process.env.WORKFLOWY_ACCOUNT;
+const originalApiEnvironment = process.env.WORKFLOWY_API_ENVIRONMENT;
 const testHome = mkdtempSync(join(tmpdir(), "workflowy-cli-account-"));
 const testConfigDir = join(testHome, ".workflowy");
 
@@ -29,6 +30,7 @@ beforeAll(async () => {
   process.env.HOME = testHome;
   process.env.WORKFLOWY_CONFIG_DIR = testConfigDir;
   delete process.env.WORKFLOWY_ACCOUNT;
+  delete process.env.WORKFLOWY_API_ENVIRONMENT;
   configModule = await import("./config.ts");
   cacheModule = await import("./cache.ts");
   dbModule = await import("./db.ts");
@@ -37,6 +39,7 @@ beforeAll(async () => {
 
 afterEach(() => {
   configModule.setAccountOverride(null);
+  configModule.setApiEnvironmentOverride(null);
   cleanupWorkspace();
 });
 
@@ -59,6 +62,12 @@ afterAll(() => {
     delete process.env.WORKFLOWY_ACCOUNT;
   } else {
     process.env.WORKFLOWY_ACCOUNT = originalAccount;
+  }
+
+  if (originalApiEnvironment === undefined) {
+    delete process.env.WORKFLOWY_API_ENVIRONMENT;
+  } else {
+    process.env.WORKFLOWY_API_ENVIRONMENT = originalApiEnvironment;
   }
 
   rmSync(testHome, { recursive: true, force: true });
@@ -233,6 +242,27 @@ test("config storage uses private directory and file permissions", () => {
   }
 
   expect(configModule.loadConfig().accounts.default?.token).toBe("secret-token");
+});
+
+test("production and beta public API caches stay isolated for the same account", () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: { default: { name: "default", token: "token-default" } },
+  });
+  cacheModule.replaceAllNodes([{ id: "production-root", name: "Production", parent_id: null }]);
+  const productionPath = configModule.getAccountCacheDbPath("default");
+
+  configModule.setApiEnvironmentOverride("beta");
+  const betaPath = configModule.getAccountCacheDbPath("default");
+  expect(betaPath).not.toBe(productionPath);
+  expect(cacheModule.getCacheNodeCount()).toBe(0);
+
+  cacheModule.replaceAllNodes([{ id: "beta-root", name: "Beta", parent_id: null }]);
+  expect(cacheModule.getNodeById("beta-root")?.name).toBe("Beta");
+
+  configModule.setApiEnvironmentOverride("production");
+  expect(cacheModule.getNodeById("production-root")?.name).toBe("Production");
+  expect(cacheModule.getNodeById("beta-root")).toBeNull();
 });
 
 test("target cache migrates legacy schema and allows duplicate ids across accounts", () => {

@@ -2,12 +2,13 @@ import type { Command } from "commander";
 import chalk from "chalk";
 import { existsSync, readFileSync } from "fs";
 import { homedir, platform } from "os";
-import { getAccountCacheDbPath, getAccountStorageKey, getActiveAccountName, getConfigDir, loadConfig } from "../shared/config.ts";
+import { getAccountCacheDbPath, getAccountStorageKey, getActiveAccountName, getApiEnvironment, getConfigDir, loadConfig, type ApiEnvironment } from "../shared/config.ts";
 import { getCacheNodeCount, getCacheAgeSeconds } from "../shared/cache.ts";
 import { isAgentMode } from "../agent.ts";
 import { join } from "path";
 import { getRuntimeVersionInfo } from "../shared/version.ts";
 import { describeLlmConfig } from "../shared/llm.ts";
+import { getPublicApiBase } from "../shared/api.ts";
 
 const VERSION = getRuntimeVersionInfo().appVersion;
 
@@ -19,6 +20,8 @@ interface CheckResult {
 }
 
 interface ApiStatus {
+  environment: ApiEnvironment;
+  base_url: string;
   checked: boolean;
   reachable: boolean;
   ok: boolean;
@@ -138,8 +141,12 @@ function getShellCompletionsStatus(): { ok: boolean; detail: string; warn?: bool
 }
 
 async function getApiStatus(token: string | undefined): Promise<ApiStatus> {
+  const environment = getApiEnvironment();
+  const baseUrl = getPublicApiBase(environment);
   if (!token) {
     return {
+      environment,
+      base_url: baseUrl,
       checked: false,
       reachable: false,
       ok: false,
@@ -151,12 +158,14 @@ async function getApiStatus(token: string | undefined): Promise<ApiStatus> {
 
   try {
     const start = Date.now();
-    const res = await fetch("https://beta.workflowy.com/api/llm/doc/read/inbox/?depth=0", {
+    const res = await fetch(`${baseUrl}/targets`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15_000),
     });
 
     return {
+      environment,
+      base_url: baseUrl,
       checked: true,
       reachable: true,
       ok: res.ok,
@@ -166,6 +175,8 @@ async function getApiStatus(token: string | undefined): Promise<ApiStatus> {
     };
   } catch (err) {
     return {
+      environment,
+      base_url: baseUrl,
       checked: true,
       reachable: false,
       ok: false,
@@ -207,11 +218,11 @@ export async function collectDoctorReport(): Promise<DoctorReport> {
   const apiStatus = await getApiStatus(token);
   if (hasToken) {
     checks.push({
-      label: "API reachable (beta.workflowy.com)",
+      label: `Public API (${apiStatus.environment})`,
       ok: apiStatus.ok,
       detail: apiStatus.reachable
         ? apiStatus.ok
-          ? `${apiStatus.latency_ms}ms`
+          ? `${apiStatus.base_url} (${apiStatus.latency_ms}ms)`
           : `HTTP ${apiStatus.status_code}`
         : apiStatus.error ?? "unreachable",
     });

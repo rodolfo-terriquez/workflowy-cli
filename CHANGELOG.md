@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.3.1 - 2026-07-21
+
+- Add production/beta public API selection through `--api-environment`, the `--beta` shortcut, persistent `api.environment` config, and `WORKFLOWY_API_ENVIRONMENT` for automation.
+- Add beta mirror inspection, creation, and removal commands, including mirror/origin metadata and confirmation before removing a mirror root.
+- Teach the built-in MCP server how mirrors behave and expose mirror tools with origin-preserving safety guidance.
+- Keep production and beta caches separate and report the active endpoint in diagnostics and sync metadata.
+
 ## 3.3.0 - 2026-07-11
 
 - Retain an independent SQLite node cache for every configured account instead of replacing one shared node table on account switches.

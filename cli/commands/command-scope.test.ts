@@ -6,6 +6,7 @@ import { join } from "path";
 const originalHome = process.env.HOME;
 const originalConfigDir = process.env.WORKFLOWY_CONFIG_DIR;
 const originalAccount = process.env.WORKFLOWY_ACCOUNT;
+const originalApiEnvironment = process.env.WORKFLOWY_API_ENVIRONMENT;
 const testHome = mkdtempSync(join(tmpdir(), "workflowy-cli-command-scope-"));
 const testConfigDir = join(testHome, ".workflowy");
 
@@ -18,6 +19,7 @@ beforeAll(async () => {
   process.env.HOME = testHome;
   process.env.WORKFLOWY_CONFIG_DIR = testConfigDir;
   delete process.env.WORKFLOWY_ACCOUNT;
+  delete process.env.WORKFLOWY_API_ENVIRONMENT;
   configModule = await import("../shared/config.ts");
   cacheModule = await import("../shared/cache.ts");
   dbModule = await import("../shared/db.ts");
@@ -26,6 +28,7 @@ beforeAll(async () => {
 
 afterEach(() => {
   configModule.setAccountOverride(null);
+  configModule.setApiEnvironmentOverride(null);
   cacheModule.resetCacheDb();
   dbModule.resetDb();
 
@@ -55,6 +58,12 @@ afterAll(() => {
     delete process.env.WORKFLOWY_ACCOUNT;
   } else {
     process.env.WORKFLOWY_ACCOUNT = originalAccount;
+  }
+
+  if (originalApiEnvironment === undefined) {
+    delete process.env.WORKFLOWY_API_ENVIRONMENT;
+  } else {
+    process.env.WORKFLOWY_API_ENVIRONMENT = originalApiEnvironment;
   }
 
   rmSync(testHome, { recursive: true, force: true });
@@ -429,6 +438,23 @@ test("config:set accepts secret values from stdin without echoing them", async (
   expect(configModule.loadConfig().llm?.apiKey).toBe("secret-from-stdin");
 });
 
+test("config:set validates and normalizes the public API environment", async () => {
+  const beta = await runCli(["--agent", "config:set", "api.environment", "beta"]);
+  expect(beta.exitCode).toBe(0);
+  expect(JSON.parse(beta.stdout).value).toBe("beta");
+  expect(configModule.loadConfig().api?.environment).toBe("beta");
+
+  const production = await runCli(["--agent", "config:set", "api.environment", "prod"]);
+  expect(production.exitCode).toBe(0);
+  expect(JSON.parse(production.stdout).value).toBe("production");
+  expect(configModule.loadConfig().api?.environment).toBe("production");
+
+  const invalid = await runCli(["--agent", "config:set", "api.environment", "staging"]);
+  expect(invalid.exitCode).toBe(1);
+  expect(JSON.parse(invalid.stdout).error.code).toBe("invalid_api_environment");
+  expect(configModule.loadConfig().api?.environment).toBe("production");
+});
+
 test("path traversal refuses ambiguous partial child matches", async () => {
   configModule.saveConfig({
     activeAccount: "default",
@@ -481,6 +507,16 @@ test("--account rejects unknown account names before command execution", async (
   const result = await runCli(["--account", "missing", "--agent", "account:current"]);
   expect(result.exitCode).toBe(1);
   expect(JSON.parse(result.stdout).error.code).toBe("account_not_found");
+});
+
+test("mirror commands require an explicit beta API selection", async () => {
+  const productionResult = await runCli(["--agent", "mirror:info", "abcdef123456"]);
+  expect(productionResult.exitCode).toBe(1);
+  expect(JSON.parse(productionResult.stdout).error.code).toBe("beta_api_required");
+
+  const betaResult = await runCli(["--beta", "--agent", "cache:sync", "--status"]);
+  expect(betaResult.exitCode).toBe(0);
+  expect(JSON.parse(betaResult.stdout).meta.api_environment).toBe("beta");
 });
 
 async function runCli(

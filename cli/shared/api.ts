@@ -1,4 +1,4 @@
-import { getActiveAccountName, loadConfig } from "./config.ts";
+import { getActiveAccountName, getApiEnvironment, loadConfig, type ApiEnvironment } from "./config.ts";
 import { normalizeLlmDocOperationMarkdown } from "./markdown.ts";
 import {
   extractRetryAfterMs,
@@ -8,7 +8,10 @@ import {
   type RateLimitEndpoint,
 } from "./rate-limit.ts";
 
-const API_BASE = "https://workflowy.com/api/v1";
+const PUBLIC_API_ORIGINS: Record<ApiEnvironment, string> = {
+  production: "https://workflowy.com",
+  beta: "https://beta.workflowy.com",
+};
 const LLM_DOC_BASE = "https://beta.workflowy.com/api/llm/doc";
 const DEFAULT_API_TIMEOUT_MS = 30_000;
 const RETRYABLE_GET_STATUSES = new Set([500, 502, 503, 504]);
@@ -20,11 +23,32 @@ export interface WFNode {
   name: string;
   note: string | null;
   priority: number;
-  data?: { layoutMode?: string };
+  data?: {
+    layoutMode?: string;
+    mirror?: {
+      origin_id?: string | null;
+      mirror_ids?: string[];
+    };
+  };
   parent_id?: string | null;
   createdAt: number;
   modifiedAt: number;
+  completed?: boolean;
   completedAt: number | null;
+}
+
+export interface WFListNodesResponse {
+  nodes: WFNode[];
+  mirror?: { origin_id?: string | null };
+}
+
+export interface WFCreateMirrorResponse {
+  item_id: string;
+  origin_id: string;
+}
+
+export function getPublicApiBase(environment = getApiEnvironment()): string {
+  return `${PUBLIC_API_ORIGINS[environment]}/api/v1`;
 }
 
 export interface WFTarget {
@@ -71,10 +95,14 @@ export function toLlmDocId(id: string): string {
 export class WorkflowyAPI {
   private token: string;
   private accountName: string;
+  readonly environment: ApiEnvironment;
+  readonly publicApiBase: string;
 
   constructor(token: string, accountName = getActiveAccountName()) {
     this.token = token;
     this.accountName = accountName;
+    this.environment = getApiEnvironment();
+    this.publicApiBase = getPublicApiBase(this.environment);
   }
 
   private headers(json = false): Record<string, string> {
@@ -132,7 +160,7 @@ export class WorkflowyAPI {
   // --- Token validation (standard API) ---
 
   async validate(): Promise<void> {
-    const res = await this.request(`${API_BASE}/targets`, {
+    const res = await this.request(`${this.publicApiBase}/targets`, {
       headers: this.headers(),
     }, "general");
     if (!res.ok) {
@@ -143,7 +171,7 @@ export class WorkflowyAPI {
   // --- Standard API v1 ---
 
   async getNode(id: string): Promise<WFNode> {
-    const res = await this.request(`${API_BASE}/nodes/${id}`, {
+    const res = await this.request(`${this.publicApiBase}/nodes/${encodeURIComponent(id)}`, {
       headers: this.headers(),
     }, "general");
     if (!res.ok) {
@@ -154,20 +182,25 @@ export class WorkflowyAPI {
   }
 
   async listNodes(parentId: string): Promise<WFNode[]> {
+    return (await this.listNodesWithMetadata(parentId)).nodes;
+  }
+
+  async listNodesWithMetadata(parentId: string): Promise<WFListNodesResponse> {
     const res = await this.request(
-      `${API_BASE}/nodes?parent_id=${encodeURIComponent(parentId)}`,
+      `${this.publicApiBase}/nodes?parent_id=${encodeURIComponent(parentId)}`,
       { headers: this.headers() },
       "general",
     );
     if (!res.ok) {
       throw new Error(`API GET /nodes failed (${res.status}): ${await res.text()}`);
     }
-    const data = (await res.json()) as { nodes: WFNode[] };
-    return data.nodes.sort((a, b) => a.priority - b.priority);
+    const data = (await res.json()) as WFListNodesResponse;
+    data.nodes.sort((a, b) => a.priority - b.priority);
+    return data;
   }
 
   async getTargets(): Promise<WFTarget[]> {
-    const res = await this.request(`${API_BASE}/targets`, {
+    const res = await this.request(`${this.publicApiBase}/targets`, {
       headers: this.headers(),
     }, "general");
     if (!res.ok) {
@@ -178,7 +211,7 @@ export class WorkflowyAPI {
   }
 
   async exportAll(): Promise<WFNode[]> {
-    const res = await this.request(`${API_BASE}/nodes-export`, {
+    const res = await this.request(`${this.publicApiBase}/nodes-export`, {
       headers: this.headers(),
     }, "export");
     if (!res.ok) {
@@ -186,6 +219,28 @@ export class WorkflowyAPI {
     }
     const data = (await res.json()) as { nodes: WFNode[] };
     return data.nodes;
+  }
+
+  async createMirror(nodeId: string, parentId: string, position: "top" | "bottom" = "top"): Promise<WFCreateMirrorResponse> {
+    const res = await this.request(`${this.publicApiBase}/nodes/${encodeURIComponent(nodeId)}/mirror`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify({ parent_id: parentId, position }),
+    }, "general");
+    if (!res.ok) {
+      throw new Error(`API POST /nodes/${nodeId}/mirror failed (${res.status}): ${await res.text()}`);
+    }
+    return res.json() as Promise<WFCreateMirrorResponse>;
+  }
+
+  async deleteMirror(nodeId: string): Promise<void> {
+    const res = await this.request(`${this.publicApiBase}/nodes/${encodeURIComponent(nodeId)}/mirror`, {
+      method: "DELETE",
+      headers: this.headers(),
+    }, "general");
+    if (!res.ok) {
+      throw new Error(`API DELETE /nodes/${nodeId}/mirror failed (${res.status}): ${await res.text()}`);
+    }
   }
 
   // --- LLM Doc API (undocumented, more efficient) ---

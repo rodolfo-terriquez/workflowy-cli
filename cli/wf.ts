@@ -18,6 +18,7 @@ import { registerNodeBulk } from "./commands/bulk.ts";
 import { registerNodeTemplate } from "./commands/template.ts";
 import { registerExport } from "./commands/export.ts";
 import { registerDocEdit } from "./commands/doc-edit.ts";
+import { registerMirrorCommands } from "./commands/mirror.ts";
 
 // Search (top-level)
 import { registerSearch } from "./commands/search.ts";
@@ -60,7 +61,7 @@ import { registerLogin } from "./commands/login.ts";
 import { registerMcp } from "./commands/mcp.ts";
 import { registerSelfUpdate } from "./commands/self-update.ts";
 import { registerVersion } from "./commands/version.ts";
-import { loadConfig, setAccountOverride } from "./shared/config.ts";
+import { loadConfig, parseApiEnvironment, setAccountOverride, setApiEnvironmentOverride } from "./shared/config.ts";
 import { exitWithError } from "./shared/errors.ts";
 import { getRuntimeVersionInfo } from "./shared/version.ts";
 
@@ -105,6 +106,9 @@ function printColoredHelp(): void {
         ["template <action>",          "Save/apply node templates"],
         ["export <target>",            "Export a subtree (outline, JSON, markdown)"],
         ["doc:edit <root>",            "Write nested outline edits in one API call"],
+        ["mirror:info <node>",         "Inspect mirror/origin relationship data (beta API)"],
+        ["mirror:create <node> <to>",  "Create a live mirror (beta API)"],
+        ["mirror:remove <node>",       "Remove a mirror root, preserving its origin (beta API)"],
       ],
     },
     {
@@ -189,6 +193,8 @@ function printColoredHelp(): void {
   console.log(`  ${w("Common Options")}`);
   console.log(`    ${c("--agent".padEnd(28))} ${dim("JSON output, no colors")}`);
   console.log(`    ${c("--account <name>".padEnd(28))} ${dim("Use an account for this command without switching")}`);
+  console.log(`    ${c("--api-environment <env>".padEnd(28))} ${dim("Use production or beta public API endpoints")}`);
+  console.log(`    ${c("--beta".padEnd(28))} ${dim("Use beta public API endpoints for this command")}`);
   console.log(`    ${c("--live".padEnd(28))} ${dim("Bypass local cache on commands that support it")}`);
   console.log(`    ${c("--copy".padEnd(28))} ${dim("Copy output to clipboard")}`);
   console.log(`    ${c("--format json|tsv|csv".padEnd(28))} ${dim("Structured output where supported")}`);
@@ -207,9 +213,11 @@ program
   .option("-v, --version", "Show version number")
   .option("--agent", "Enable agent mode (JSON output, no colors)")
   .option("--account <name>", "Use an account for this command without changing the active account")
+  .option("--api-environment <environment>", "Use production or beta public API endpoints")
+  .option("--beta", "Use beta public API endpoints for this command")
   .option("--copy", "Copy output to clipboard")
   .hook("preAction", () => {
-    const opts = program.opts<{ agent?: boolean; account?: string }>();
+    const opts = program.opts<{ agent?: boolean; account?: string; apiEnvironment?: string; beta?: boolean }>();
     if (opts.agent) {
       setAgentMode(true);
     }
@@ -223,6 +231,18 @@ program
         );
       }
       setAccountOverride(opts.account);
+    }
+    if (opts.apiEnvironment && opts.beta) {
+      exitWithError("invalid_args", "Use either --api-environment or --beta, not both.");
+    }
+    if (opts.apiEnvironment) {
+      const environment = parseApiEnvironment(opts.apiEnvironment);
+      if (!environment) {
+        exitWithError("invalid_api_environment", `Unknown API environment "${opts.apiEnvironment}".`, "Use production or beta.");
+      }
+      setApiEnvironmentOverride(environment);
+    } else if (opts.beta) {
+      setApiEnvironmentOverride("beta");
     }
   });
 
@@ -242,6 +262,7 @@ registerNodeBulk(program);
 registerNodeTemplate(program);
 registerExport(program);
 registerDocEdit(program);
+registerMirrorCommands(program);
 
 // Search & browse (top-level)
 registerSearch(program);

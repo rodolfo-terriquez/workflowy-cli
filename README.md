@@ -52,7 +52,7 @@ This project is WorkFlowy-native:
 
 ## Status
 
-Current version: `3.3.0`
+Current version: `3.3.1`
 
 Implemented today:
 
@@ -61,6 +61,7 @@ Implemented today:
 - todos, tags, history, templates, bulk operations
 - REPL shell, shell completions, clipboard copy support, command aliases
 - multi-account config
+- production/beta public API selection with mirror inspection and management
 - watch daemon, webhooks, workflows, MCP server
 - compiled binary build via Bun
 
@@ -70,7 +71,7 @@ To install a specific version or custom location:
 
 ```bash
 curl -fsSL https://github.com/rodolfo-terriquez/workflowy-cli/releases/latest/download/install.sh | \
-  WF_VERSION=v3.3.0 WF_INSTALL_DIR="$HOME/.local/bin" bash
+  WF_VERSION=v3.3.1 WF_INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
 ### Build from source
@@ -203,6 +204,10 @@ wf config:alias set|list|remove
 wf account:list
 wf account:switch <name>
 wf account:current
+
+wf mirror:info <node>
+wf mirror:create <node> <destination>
+wf mirror:remove <mirror> --yes
 ```
 
 ## Common Usage
@@ -350,6 +355,42 @@ wf cache:diff --since 30m
 
 Most read commands use the cache automatically. `node:read` and `search` can bypass it with `--live`.
 
+## Public API environments and mirrors
+
+Production is the default public API environment. Select beta for one command with either global option:
+
+```bash
+wf --beta cache:sync
+wf --api-environment beta mirror:info <node-id>
+```
+
+Persist the choice when you want subsequent CLI and MCP sessions to use beta:
+
+```bash
+wf config:set api.environment beta
+wf doctor
+
+# switch back at any time
+wf config:set api.environment production
+```
+
+Automations can set `WORKFLOWY_API_ENVIRONMENT=production` or `WORKFLOWY_API_ENVIRONMENT=beta`. `wf doctor` reports the active environment and exact public API base URL. Production and beta caches are stored separately, so testing beta mirror responses does not overwrite the production cache.
+
+Mirror support is currently beta and may change. A mirror is a synchronized view of one canonical origin, not a separate copy: editing its shared content updates the origin and every other mirror.
+
+```bash
+# inspect data.mirror.origin_id or data.mirror.mirror_ids
+wf --beta --agent mirror:info <node-id>
+
+# create a mirror under a real destination node or a cached @target/path
+wf --beta mirror:create <origin-or-mirror-id> <destination> --position top
+
+# remove only this mirror root; its origin remains intact
+wf --beta mirror:remove <mirror-id> --yes
+```
+
+Mirror responses combine location and shared content. `id`, `parent_id`, `priority`, and `createdAt` describe the mirror location; `name`, `note`, layout, completion, and modification fields come from the origin. Creating a mirror from an existing mirror resolves to the same true origin. The mirror endpoint requires a real destination node ID, so sync first when using an `@target` or cached path.
+
 ## Rate Limiting
 
 `wf` now self-throttles WorkFlowy API traffic by default:
@@ -495,6 +536,15 @@ MCP client config example:
 
 Run `wf login` and `wf cache:sync` first. The MCP server uses the same local config and cache as the CLI.
 
+To expose beta mirror tools, set the environment before starting the server:
+
+```bash
+wf config:set api.environment beta
+wf mcp
+```
+
+The MCP bootstrap explains mirror identity and exposes `workflowy_mirror_info`, `workflowy_mirror_create`, and confirmation-gated `workflowy_mirror_remove` tools. Agents are instructed not to duplicate mirrored content or treat mirrors as separate notes.
+
 Start an account-pinned server with `wf --account work mcp`, or pass the optional `account` field on any MCP tool call to select a configured account per operation. This allows one agent session to read from one account and write to another while each account keeps its own cache.
 
 MCP exposes friendly tools for common tasks (`read`, `search`, `add`, `batch`) plus `edit_doc` for structured nested outline edits. Prefer `edit_doc` when writing sections, subpoints, or multi-bullet content; use `batch` for flat grouped changes. `edit_doc` maps back to the CLI `doc:edit` command, so the CLI remains the canonical implementation.
@@ -539,7 +589,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:read",
-    "wf_version": "3.3.0"
+    "wf_version": "3.3.1"
   },
   "node": {},
   "children": []
@@ -552,7 +602,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "search",
-    "wf_version": "3.3.0"
+    "wf_version": "3.3.1"
   },
   "nodes": []
 }
@@ -564,7 +614,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:add",
-    "wf_version": "3.3.0"
+    "wf_version": "3.3.1"
   },
   "message": "..."
 }
@@ -595,6 +645,8 @@ wf config:set llm.provider openrouter
 wf config:set llm.model google/gemini-flash-2.5
 printf %s "$LLM_API_KEY" | wf config:set llm.apiKey --stdin
 wf config:set llm.baseUrl <openai-compatible-base-url>
+wf config:get api.environment
+wf config:set api.environment beta
 ```
 
 Aliases:
@@ -615,7 +667,7 @@ wf account:switch work
 wf account:current
 ```
 
-Each account keeps its own SQLite cache under `~/.workflowy/db/accounts/`. Switching accounts no longer discards another account's synced tree or requires an immediate re-sync.
+Each account and public API environment keeps its own SQLite cache under `~/.workflowy/db/accounts/`. Switching accounts or moving between production and beta no longer discards another synced tree or requires an immediate re-sync.
 
 Use `--account <name>` to select an account for one command without changing the configured default:
 

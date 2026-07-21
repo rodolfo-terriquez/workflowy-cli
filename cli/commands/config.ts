@@ -1,7 +1,7 @@
 import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
-import { getConfigValue, isSensitiveConfigKey, redactConfigValue, setConfigValue, loadConfig, saveConfig } from "../shared/config.ts";
+import { getConfigValue, isSensitiveConfigKey, parseApiEnvironment, redactConfigValue, setConfigValue, loadConfig, saveConfig } from "../shared/config.ts";
 import { isAgentMode } from "../agent.ts";
 import { getAliases, type AliasMap } from "../shared/alias.ts";
 import { exitWithError } from "../shared/errors.ts";
@@ -42,8 +42,14 @@ export function registerConfigCommands(program: Command): void {
       if (resolvedValue === undefined || resolvedValue === "") {
         exitWithError("missing_arg", "A config value is required.", "Pass a value or use --stdin.");
       }
-      setConfigValue(key, resolvedValue);
-      const displayValue = isSensitiveConfigKey(key) ? "[redacted]" : resolvedValue;
+      const normalizedValue = key === "api.environment"
+        ? parseApiEnvironment(resolvedValue)
+        : resolvedValue;
+      if (key === "api.environment" && !normalizedValue) {
+        exitWithError("invalid_api_environment", `Unknown API environment "${resolvedValue}".`, "Use production or beta.");
+      }
+      setConfigValue(key, normalizedValue!);
+      const displayValue = isSensitiveConfigKey(key) ? "[redacted]" : normalizedValue!;
 
       if (isAgentMode()) {
         console.log(JSON.stringify({

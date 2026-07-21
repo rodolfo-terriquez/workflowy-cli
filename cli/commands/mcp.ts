@@ -69,6 +69,14 @@ Before making tool calls, follow this checklist:
 - Most reads are cache-first. Some tools support live API reads or searches when needed.
 - Node names and paths may be ambiguous. Do not guess when multiple matches exist.
 
+## Mirrors (beta public API)
+
+- A mirror is a synchronized view of one canonical origin, not an independent copy. Editing content through a mirror updates the origin and every other mirror.
+- On mirror nodes, \`data.mirror.origin_id\` identifies the canonical origin. On origin nodes, \`data.mirror.mirror_ids\` lists mirror-root locations.
+- Mirror responses mix location and shared content: \`id\`, \`parent_id\`, \`priority\`, and \`createdAt\` describe the mirror location; text, note, layout, completion, and modification fields come from the origin.
+- Do not duplicate mirrored content or treat a mirror and its origin as separate notes. Inspect relationship data with \`workflowy_mirror_info\` when identity matters.
+- Creating, inspecting, or removing mirrors requires the beta public API. Configure \`api.environment\` as \`beta\` before starting this server. \`workflowy_mirror_remove\` removes only the mirror root and preserves its origin.
+
 ## Common Workflows
 
 - To inspect a subtree: use \`read\`.
@@ -541,6 +549,42 @@ const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: "workflowy_mirror_info",
+    description: "Inspect whether a node is a mirror, an origin with mirrors, or a regular node. Requires the beta public API and returns origin_id / mirror_ids relationship data.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        nodeId: { type: "string", description: "Node ID or cached path to inspect" },
+      },
+      required: ["nodeId"],
+    },
+  },
+  {
+    name: "workflowy_mirror_create",
+    description: "Create a synchronized mirror of a node under another real node. This creates a view of the same origin, not a copy. Requires the beta public API.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        nodeId: { type: "string", description: "Origin or existing mirror to mirror; existing mirrors resolve to their true origin" },
+        to: { type: "string", description: "Destination parent node ID, @target, or cached path" },
+        position: { type: "string", enum: ["top", "bottom"], default: "top" },
+      },
+      required: ["nodeId", "to"],
+    },
+  },
+  {
+    name: "workflowy_mirror_remove",
+    description: "Remove one mirror root while preserving the canonical origin. Destructive to that mirror location only; requires confirm=true and the beta public API.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        nodeId: { type: "string", description: "Mirror-root node ID or cached path" },
+        confirm: { type: "boolean", description: "Must be true to confirm removal of this mirror root" },
+      },
+      required: ["nodeId", "confirm"],
+    },
+  },
+  {
     name: "workflowy_batch",
     description: "Execute flat grouped operations in a batch. Markdown-style text is converted to Workflowy rich text on write, but nested outlines should use edit_doc with items[].c.",
     inputSchema: {
@@ -725,6 +769,9 @@ function buildToolInvocation(name: string, args: Record<string, unknown>): McpTo
     complete: ["node:complete", String(args.nodeId ?? ""), ...(args.undo ? ["--undo"] : [])],
     workflowy_update: ["node:update", String(args.nodeId ?? ""), ...(args.text !== undefined ? ["--text", String(args.text)] : []), ...(args.note !== undefined ? ["--note", String(args.note)] : []), ...(args.clearNote ? ["--clear-note"] : [])],
     update: ["node:update", String(args.nodeId ?? ""), ...(args.text !== undefined ? ["--text", String(args.text)] : []), ...(args.note !== undefined ? ["--note", String(args.note)] : []), ...(args.clearNote ? ["--clear-note"] : [])],
+    workflowy_mirror_info: ["mirror:info", String(args.nodeId ?? "")],
+    workflowy_mirror_create: ["mirror:create", String(args.nodeId ?? ""), String(args.to ?? ""), ...(args.position ? ["--position", String(args.position)] : [])],
+    workflowy_mirror_remove: ["mirror:remove", String(args.nodeId ?? ""), ...(args.confirm === true ? ["--yes"] : [])],
     workflowy_batch: ["batch"],
     batch: ["batch"],
     workflowy_propose: ["ai:propose", String(args.instruction ?? "")],
@@ -970,7 +1017,11 @@ function shouldRetryAfterSync(invocation: McpToolInvocation, payload: CliErrorPa
     case "update":
     case "workflowy_complete":
     case "complete":
+    case "workflowy_mirror_info":
+    case "workflowy_mirror_remove":
       return isLikelyStaleLookup(String(invocation.args.nodeId ?? ""));
+    case "workflowy_mirror_create":
+      return isLikelyStaleLookup(String(invocation.args.nodeId ?? "")) || isLikelyStaleLookup(String(invocation.args.to ?? ""));
     case "workflowy_move":
     case "move":
       return isLikelyStaleLookup(String(invocation.args.nodeId ?? "")) || isLikelyStaleLookup(String(invocation.args.to ?? ""));

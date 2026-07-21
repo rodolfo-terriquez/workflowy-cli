@@ -18,7 +18,10 @@ export interface ApiRateLimitConfig {
   maxRetries?: number;
 }
 
+export type ApiEnvironment = "production" | "beta";
+
 export interface ApiConfig {
+  environment?: ApiEnvironment;
   rateLimit?: ApiRateLimitConfig;
   timeoutSeconds?: number;
 }
@@ -43,6 +46,7 @@ export interface WFConfig {
 }
 
 let accountOverride: string | null = null;
+let apiEnvironmentOverride: ApiEnvironment | null = null;
 
 function resolveConfigDir(): string {
   return process.env.WORKFLOWY_CONFIG_DIR || join(homedir(), ".workflowy");
@@ -89,7 +93,8 @@ export function getAccountStorageKey(accountName: string): string {
 export function getAccountCacheDbPath(accountName: string): string {
   const accountDbDir = join(getDbDir(), "accounts");
   secureDirectory(accountDbDir);
-  return join(accountDbDir, `account-${getAccountStorageKey(accountName)}.sqlite`);
+  const environmentSuffix = getApiEnvironment() === "beta" ? "-beta" : "";
+  return join(accountDbDir, `account-${getAccountStorageKey(accountName)}${environmentSuffix}.sqlite`);
 }
 
 export function loadConfig(): WFConfig {
@@ -165,6 +170,45 @@ export function setAccountOverride(accountName: string | null): void {
 
 export function getActiveAccountName(config = loadConfig()): string {
   return accountOverride || process.env.WORKFLOWY_ACCOUNT || config.activeAccount || "default";
+}
+
+export function parseApiEnvironment(value: unknown): ApiEnvironment | null {
+  if (value === "production" || value === "prod") return "production";
+  if (value === "beta") return "beta";
+  return null;
+}
+
+export function setApiEnvironmentOverride(environment: ApiEnvironment | null): void {
+  apiEnvironmentOverride = environment;
+  if (environment) {
+    process.env.WORKFLOWY_API_ENVIRONMENT = environment;
+  } else {
+    delete process.env.WORKFLOWY_API_ENVIRONMENT;
+  }
+}
+
+export function getApiEnvironment(config = loadConfig()): ApiEnvironment {
+  if (apiEnvironmentOverride) return apiEnvironmentOverride;
+
+  const envValue = process.env.WORKFLOWY_API_ENVIRONMENT;
+  if (envValue !== undefined) {
+    const parsed = parseApiEnvironment(envValue);
+    if (!parsed) {
+      throw new Error(`Invalid WORKFLOWY_API_ENVIRONMENT "${envValue}". Use "production" or "beta".`);
+    }
+    return parsed;
+  }
+
+  const configured = config.api?.environment;
+  if (configured !== undefined) {
+    const parsed = parseApiEnvironment(configured);
+    if (!parsed) {
+      throw new Error(`Invalid api.environment "${String(configured)}". Use "production" or "beta".`);
+    }
+    return parsed;
+  }
+
+  return "production";
 }
 
 export function getToken(accountName?: string): string | null {

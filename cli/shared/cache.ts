@@ -1,19 +1,22 @@
 import { Database } from "bun:sqlite";
 import { existsSync } from "fs";
-import { getAccountCacheDbPath, getActiveAccountName, getDbPath } from "./config.ts";
+import { getAccountCacheDbPath, getActiveAccountName, getApiEnvironment, getDbPath } from "./config.ts";
 import { cleanHtml } from "./nodes.ts";
 
 const accountDbs = new Map<string, Database>();
 
 export function getCacheDb(accountName = getActiveAccountName()): Database {
-  let db = accountDbs.get(accountName);
+  const cacheKey = `${accountName}:${getApiEnvironment()}`;
+  let db = accountDbs.get(cacheKey);
   if (!db) {
     db = new Database(getAccountCacheDbPath(accountName), { create: true });
     db.exec("PRAGMA busy_timeout = 5000");
     db.exec("PRAGMA journal_mode = WAL");
     initCacheSchema(db);
-    migrateLegacyCache(db, accountName);
-    accountDbs.set(accountName, db);
+    if (getApiEnvironment() === "production") {
+      migrateLegacyCache(db, accountName);
+    }
+    accountDbs.set(cacheKey, db);
   }
   return db;
 }
