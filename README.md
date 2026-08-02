@@ -8,6 +8,8 @@
 
 `wf` is the WorkFlowy command-line and agent toolkit: a local-first CLI, cache, automation layer, and MCP server that lets humans, scripts, and AI agents safely read, search, organize, and edit a WorkFlowy account.
 
+More from this collection: [Workflowy tools by Rodolfo](https://madebyrodolfo.com/workflowy/).
+
 ## Install in one command
 
 ### macOS and Linux
