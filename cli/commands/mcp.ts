@@ -264,6 +264,7 @@ const MCP_TOOLS: McpTool[] = [
         to: { type: "string", description: "Target parent", default: "@inbox" },
         type: { type: "string", enum: ["bullet", "todo", "h1", "h2", "h3"], default: "bullet" },
         note: { type: "string", description: "Optional note content, best for metadata or true note fields. Use child bullets for normal outline body text." },
+        position: { type: "string", enum: ["top", "bottom"], description: "Insert at the top or bottom. When omitted, uses defaults.addPosition (bottom if unset)." },
       },
       required: ["text"],
     },
@@ -278,6 +279,7 @@ const MCP_TOOLS: McpTool[] = [
         to: { type: "string", description: "Target parent", default: "@inbox" },
         type: { type: "string", enum: ["bullet", "todo", "h1", "h2", "h3"], default: "bullet" },
         note: { type: "string", description: "Optional note content, best for metadata or true note fields. Use child bullets for normal outline body text." },
+        position: { type: "string", enum: ["top", "bottom"], description: "Insert at the top or bottom. When omitted, uses defaults.addPosition (bottom if unset)." },
       },
       required: ["text"],
     },
@@ -744,12 +746,12 @@ const MCP_TOOLS: McpTool[] = [
   },
 ];
 
-function buildToolInvocation(name: string, args: Record<string, unknown>): McpToolInvocation | null {
+export function buildToolInvocation(name: string, args: Record<string, unknown>): McpToolInvocation | null {
   const cmdMap: Record<string, string[]> = {
     workflowy_read: ["node:read", String(args.target ?? "@inbox"), ...(args.depth ? ["--depth", String(args.depth)] : []), ...(args.live ? ["--live"] : [])],
     read: ["node:read", String(args.target ?? "@inbox"), ...(args.depth ? ["--depth", String(args.depth)] : []), ...(args.live ? ["--live"] : [])],
-    workflowy_add: ["node:add", String(args.to ?? "@inbox"), String(args.text ?? ""), ...(args.type ? ["--type", String(args.type)] : []), ...(args.note ? ["--note", String(args.note)] : [])],
-    add: ["node:add", String(args.to ?? "@inbox"), String(args.text ?? ""), ...(args.type ? ["--type", String(args.type)] : []), ...(args.note ? ["--note", String(args.note)] : [])],
+    workflowy_add: ["node:add", String(args.to ?? "@inbox"), String(args.text ?? ""), ...(args.type ? ["--type", String(args.type)] : []), ...(args.note ? ["--note", String(args.note)] : []), ...(args.position ? ["--position", String(args.position)] : [])],
+    add: ["node:add", String(args.to ?? "@inbox"), String(args.text ?? ""), ...(args.type ? ["--type", String(args.type)] : []), ...(args.note ? ["--note", String(args.note)] : []), ...(args.position ? ["--position", String(args.position)] : [])],
     workflowy_find: ["node:find", String(args.query ?? "")],
     find: ["node:find", String(args.query ?? "")],
     workflowy_todos: ["node:todos", ...(args.target ? ["--target", String(args.target)] : []), ...(args.completed ? ["--completed"] : []), ...(args.since ? ["--since", String(args.since)] : []), ...(args.limit ? ["--limit", String(args.limit)] : [])],

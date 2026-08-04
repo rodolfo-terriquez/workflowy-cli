@@ -30,6 +30,12 @@ export interface McpConfig {
   instructionsNode?: string;
 }
 
+export type AddPosition = "top" | "bottom";
+
+export interface DefaultsConfig {
+  addPosition?: AddPosition;
+}
+
 export interface AccountConfig {
   name: string;
   token: string;
@@ -40,6 +46,7 @@ export interface WFConfig {
   accounts: Record<string, AccountConfig>;
   api?: ApiConfig;
   mcp?: McpConfig;
+  defaults?: DefaultsConfig;
   llm?: LlmConfig;
   aliases?: Record<string, string>;
   [key: string]: unknown;
@@ -209,6 +216,23 @@ export function getApiEnvironment(config = loadConfig()): ApiEnvironment {
   }
 
   return "production";
+}
+
+export function parseAddPosition(value: unknown): AddPosition | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "top" || normalized === "bottom" ? normalized : null;
+}
+
+export function getDefaultAddPosition(config = loadConfig()): AddPosition {
+  const configured = config.defaults?.addPosition;
+  if (configured === undefined) return "bottom";
+
+  const parsed = parseAddPosition(configured);
+  if (!parsed) {
+    throw new Error(`Invalid defaults.addPosition "${String(configured)}". Use "top" or "bottom".`);
+  }
+  return parsed;
 }
 
 export function getToken(accountName?: string): string | null {

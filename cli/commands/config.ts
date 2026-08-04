@@ -1,7 +1,7 @@
 import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
-import { getConfigValue, isSensitiveConfigKey, parseApiEnvironment, redactConfigValue, setConfigValue, loadConfig, saveConfig } from "../shared/config.ts";
+import { getConfigValue, isSensitiveConfigKey, parseAddPosition, parseApiEnvironment, redactConfigValue, setConfigValue, loadConfig, saveConfig } from "../shared/config.ts";
 import { isAgentMode } from "../agent.ts";
 import { getAliases, type AliasMap } from "../shared/alias.ts";
 import { exitWithError } from "../shared/errors.ts";
@@ -44,9 +44,14 @@ export function registerConfigCommands(program: Command): void {
       }
       const normalizedValue = key === "api.environment"
         ? parseApiEnvironment(resolvedValue)
-        : resolvedValue;
+        : key === "defaults.addPosition"
+          ? parseAddPosition(resolvedValue)
+          : resolvedValue;
       if (key === "api.environment" && !normalizedValue) {
         exitWithError("invalid_api_environment", `Unknown API environment "${resolvedValue}".`, "Use production or beta.");
+      }
+      if (key === "defaults.addPosition" && !normalizedValue) {
+        exitWithError("invalid_add_position", `Unknown default add position "${resolvedValue}".`, "Use top or bottom.");
       }
       setConfigValue(key, normalizedValue!);
       const displayValue = isSensitiveConfigKey(key) ? "[redacted]" : normalizedValue!;

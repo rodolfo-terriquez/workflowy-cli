@@ -54,7 +54,7 @@ This project is WorkFlowy-native:
 
 ## Status
 
-Current version: `3.3.1`
+Current version: `3.3.2`
 
 Implemented today:
 
@@ -73,7 +73,7 @@ To install a specific version or custom location:
 
 ```bash
 curl -fsSL https://github.com/rodolfo-terriquez/workflowy-cli/releases/latest/download/install.sh | \
-  WF_VERSION=v3.3.1 WF_INSTALL_DIR="$HOME/.local/bin" bash
+  WF_VERSION=v3.3.2 WF_INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
 ### Build from source
@@ -253,6 +253,7 @@ wf history --limit 50
 
 ```bash
 wf node:add @inbox "Draft Q3 plan" --type todo
+wf node:add @inbox "Pin this first" --position top
 wf node:move "@today/Fix release notes" @inbox
 wf node:complete "@inbox/Follow up with vendor"
 wf node:update "@inbox/Follow up with vendor" --text "Follow up with billing vendor" --note "Waiting on response"
@@ -591,7 +592,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:read",
-    "wf_version": "3.3.1"
+    "wf_version": "3.3.2"
   },
   "node": {},
   "children": []
@@ -604,7 +605,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "search",
-    "wf_version": "3.3.1"
+    "wf_version": "3.3.2"
   },
   "nodes": []
 }
@@ -616,7 +617,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:add",
-    "wf_version": "3.3.1"
+    "wf_version": "3.3.2"
   },
   "message": "..."
 }
@@ -649,7 +650,11 @@ printf %s "$LLM_API_KEY" | wf config:set llm.apiKey --stdin
 wf config:set llm.baseUrl <openai-compatible-base-url>
 wf config:get api.environment
 wf config:set api.environment beta
+wf config:get defaults.addPosition
+wf config:set defaults.addPosition top
 ```
+
+`wf node:add` and its `wf add` alias insert at the bottom by default. Set `defaults.addPosition` to `top` or `bottom` to change that default for CLI and MCP add calls. A per-call `--position top|bottom` option—or the MCP add tool's `position` field—overrides the saved setting.
 
 Aliases:
 

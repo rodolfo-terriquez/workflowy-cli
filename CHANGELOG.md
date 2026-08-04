@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.3.2 - 2026-08-04
+
+- Add a configurable `defaults.addPosition` setting for `wf add` and `wf node:add`, while keeping `bottom` as the default.
+- Expose the same optional `top` or `bottom` position override through the MCP add tools.
+
 ## 3.3.1 - 2026-07-21
 
 - Add production/beta public API selection through `--api-environment`, the `--beta` shortcut, persistent `api.environment` config, and `WORKFLOWY_API_ENVIRONMENT` for automation.

@@ -1,7 +1,7 @@
 import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
-import { requireToken } from "../shared/config.ts";
+import { getDefaultAddPosition, parseAddPosition, requireToken } from "../shared/config.ts";
 import { getCacheNodeCount, markTargetDirty } from "../shared/cache.ts";
 import { parseLlmDocResponse } from "../shared/nodes.ts";
 import { verifyInsertedChild } from "../shared/insert-verification.ts";
@@ -18,7 +18,7 @@ export function registerNodeAdd(program: Command): void {
     .description("Add one child node to a target")
     .option("--type <type>", "Node layout (bullet|todo|h1|h2|h3)", "bullet")
     .option("--note <note>", "Note content for the node; prefer child bullets for outline body text")
-    .option("--position <pos>", "Position: top or bottom", "bottom")
+    .option("--position <pos>", "Position: top or bottom (overrides defaults.addPosition)")
     .option("--after <nodeId>", "Insert after this sibling node")
     .option("--format <type>", "Output format (outline|json)")
     .action(
@@ -28,11 +28,18 @@ export function registerNodeAdd(program: Command): void {
         opts: {
           type: string;
           note?: string;
-          position: string;
+          position?: string;
           after?: string;
           format?: string;
         }
       ) => {
+        const position = opts.position === undefined
+          ? getDefaultAddPosition()
+          : parseAddPosition(opts.position);
+        if (!position) {
+          exitWithError("invalid_position", `Unknown position "${opts.position}".`, "Use top or bottom.");
+        }
+
         const token = requireToken();
         const api = new WorkflowyAPI(token);
 
@@ -66,7 +73,7 @@ export function registerNodeAdd(program: Command): void {
           ]);
         } else {
           await api.editDoc(resolvedId, [
-            { op: "insert", under: resolvedId, items: [item], position: opts.position as "top" | "bottom" },
+            { op: "insert", under: resolvedId, items: [item], position },
           ]);
         }
 
@@ -83,7 +90,7 @@ export function registerNodeAdd(program: Command): void {
               afterChildren,
               requestedText: text,
               afterId: opts.after,
-              position: opts.position as "top" | "bottom",
+              position,
             });
 
             verificationStatus = verification.status;
@@ -123,7 +130,7 @@ export function registerNodeAdd(program: Command): void {
                 text,
                 note: opts.note,
                 type: opts.type,
-                position: opts.after ? undefined : opts.position,
+                position: opts.after ? undefined : position,
               },
             },
           })));

@@ -455,6 +455,31 @@ test("config:set validates and normalizes the public API environment", async () 
   expect(configModule.loadConfig().api?.environment).toBe("production");
 });
 
+test("config:set validates the default add position and preserves bottom as the fallback", async () => {
+  expect(configModule.getDefaultAddPosition()).toBe("bottom");
+
+  const top = await runCli(["--agent", "config:set", "defaults.addPosition", "top"]);
+  expect(top.exitCode).toBe(0);
+  expect(JSON.parse(top.stdout).value).toBe("top");
+  expect(configModule.getDefaultAddPosition()).toBe("top");
+
+  const bottom = await runCli(["--agent", "config:set", "defaults.addPosition", "BOTTOM"]);
+  expect(bottom.exitCode).toBe(0);
+  expect(JSON.parse(bottom.stdout).value).toBe("bottom");
+  expect(configModule.getDefaultAddPosition()).toBe("bottom");
+
+  const invalid = await runCli(["--agent", "config:set", "defaults.addPosition", "middle"]);
+  expect(invalid.exitCode).toBe(1);
+  expect(JSON.parse(invalid.stdout).error.code).toBe("invalid_add_position");
+  expect(configModule.getDefaultAddPosition()).toBe("bottom");
+});
+
+test("node:add rejects an invalid per-command position before attempting a write", async () => {
+  const invalid = await runCli(["--agent", "node:add", "@inbox", "Test item", "--position", "middle"]);
+  expect(invalid.exitCode).toBe(1);
+  expect(JSON.parse(invalid.stdout).error.code).toBe("invalid_position");
+});
+
 test("path traversal refuses ambiguous partial child matches", async () => {
   configModule.saveConfig({
     activeAccount: "default",
