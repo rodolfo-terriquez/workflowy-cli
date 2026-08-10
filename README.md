@@ -54,7 +54,7 @@ This project is WorkFlowy-native:
 
 ## Status
 
-Current version: `3.3.2`
+Current version: `3.3.3`
 
 Implemented today:
 
@@ -73,7 +73,7 @@ To install a specific version or custom location:
 
 ```bash
 curl -fsSL https://github.com/rodolfo-terriquez/workflowy-cli/releases/latest/download/install.sh | \
-  WF_VERSION=v3.3.2 WF_INSTALL_DIR="$HOME/.local/bin" bash
+  WF_VERSION=v3.3.3 WF_INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
 ### Build from source
@@ -336,6 +336,8 @@ Commands that accept a target support:
 - raw node IDs
 - path traversal such as `@today/Meetings/Launch review`
 
+Public API create and move operations can use Calendar targets before their date nodes exist. For example, `wf add @today "Daily note"` materializes Today on demand. Existing local bookmarks still take precedence over same-named built-in destinations.
+
 Examples:
 
 ```bash
@@ -357,6 +359,8 @@ wf cache:diff --since 30m
 ```
 
 Most read commands use the cache automatically. `node:read` and `search` can bypass it with `--live`.
+
+Ordinary node CRUD uses the documented public v1 API. Advanced document-shaped operations—nested outline creation, grouped edits, and insert-after placement—continue to use the LLM document API through `doc:edit`, `batch`, and the relevant specialized command paths.
 
 ## Public API environments and mirrors
 
@@ -592,7 +596,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:read",
-    "wf_version": "3.3.2"
+    "wf_version": "3.3.3"
   },
   "node": {},
   "children": []
@@ -605,7 +609,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "search",
-    "wf_version": "3.3.2"
+    "wf_version": "3.3.3"
   },
   "nodes": []
 }
@@ -617,7 +621,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:add",
-    "wf_version": "3.3.2"
+    "wf_version": "3.3.3"
   },
   "message": "..."
 }

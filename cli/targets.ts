@@ -25,6 +25,10 @@ const SYSTEM_TARGETS: Record<string, string> = {
   next_week: "Next Week",
 };
 
+export function isSystemTargetKey(target: string): boolean {
+  return Object.prototype.hasOwnProperty.call(SYSTEM_TARGETS, normalizeTargetKey(target));
+}
+
 export function normalizeTargetKey(targetStr: string): string {
   return normalizeBookmarkName(targetStr);
 }

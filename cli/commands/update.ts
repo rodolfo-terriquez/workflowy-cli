@@ -4,6 +4,7 @@ import { WorkflowyAPI } from "../shared/api.ts";
 import { requireToken } from "../shared/config.ts";
 import { getCacheNodeCount, getNodeById, markTargetDirty } from "../shared/cache.ts";
 import { findByNameOrPath, isDirectId } from "../shared/path.ts";
+import { markdownToRichText } from "../shared/markdown.ts";
 import { formatJson } from "../output/json.ts";
 import { buildWriteSuccessOutput } from "../shared/write-response.ts";
 import { isAgentMode } from "../agent.ts";
@@ -35,16 +36,15 @@ export function registerNodeUpdate(program: Command): void {
         const api = new WorkflowyAPI(token);
         const nodeId = resolveNodeArg(nodeIdOrPath);
 
-        const to: { n?: string; d?: string } = {};
-        if (opts.text !== undefined) to.n = opts.text;
+        const updates: { name?: string; note?: string } = {};
+        if (opts.text !== undefined) updates.name = markdownToRichText(opts.text);
         if (opts.clearNote) {
-          to.d = "";
+          updates.note = "";
         } else if (opts.note !== undefined) {
-          to.d = opts.note;
+          updates.note = markdownToRichText(opts.note);
         }
 
-        await api.readDoc(nodeId, 1);
-        await api.editDoc(nodeId, [{ op: "update", ref: nodeId, to }]);
+        await api.updateNode(nodeId, updates);
 
         const cached = getCacheNodeCount() > 0 ? getNodeById(nodeId) : null;
         markTargetDirty(nodeId);

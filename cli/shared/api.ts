@@ -47,6 +47,22 @@ export interface WFCreateMirrorResponse {
   origin_id: string;
 }
 
+export interface WFCreateNodeResponse {
+  item_id: string;
+}
+
+export interface WFCreateNodeOptions {
+  layoutMode?: string;
+  note?: string;
+  position?: "top" | "bottom";
+}
+
+export interface WFUpdateNodeInput {
+  name?: string;
+  note?: string;
+  layoutMode?: string;
+}
+
 export function getPublicApiBase(environment = getApiEnvironment()): string {
   return `${PUBLIC_API_ORIGINS[environment]}/api/v1`;
 }
@@ -219,6 +235,77 @@ export class WorkflowyAPI {
     }
     const data = (await res.json()) as { nodes: WFNode[] };
     return data.nodes;
+  }
+
+  async createNode(
+    parentId: string,
+    name: string,
+    options: WFCreateNodeOptions = {},
+  ): Promise<WFCreateNodeResponse> {
+    const res = await this.request(`${this.publicApiBase}/nodes`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify({
+        parent_id: parentId,
+        name,
+        ...options,
+      }),
+    }, "general");
+    if (!res.ok) {
+      throw new Error(`API POST /nodes failed (${res.status}): ${await res.text()}`);
+    }
+    return res.json() as Promise<WFCreateNodeResponse>;
+  }
+
+  async updateNode(nodeId: string, updates: WFUpdateNodeInput): Promise<void> {
+    const res = await this.request(`${this.publicApiBase}/nodes/${encodeURIComponent(nodeId)}`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(updates),
+    }, "general");
+    if (!res.ok) {
+      throw new Error(`API POST /nodes/${nodeId} failed (${res.status}): ${await res.text()}`);
+    }
+  }
+
+  async deleteNode(nodeId: string): Promise<void> {
+    const res = await this.request(`${this.publicApiBase}/nodes/${encodeURIComponent(nodeId)}`, {
+      method: "DELETE",
+      headers: this.headers(),
+    }, "general");
+    if (!res.ok) {
+      throw new Error(`API DELETE /nodes/${nodeId} failed (${res.status}): ${await res.text()}`);
+    }
+  }
+
+  async moveNode(nodeId: string, parentId: string, position: "top" | "bottom" = "top"): Promise<void> {
+    const res = await this.request(`${this.publicApiBase}/nodes/${encodeURIComponent(nodeId)}/move`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify({ parent_id: parentId, position }),
+    }, "general");
+    if (!res.ok) {
+      throw new Error(`API POST /nodes/${nodeId}/move failed (${res.status}): ${await res.text()}`);
+    }
+  }
+
+  async completeNode(nodeId: string): Promise<void> {
+    await this.setNodeCompletion(nodeId, true);
+  }
+
+  async uncompleteNode(nodeId: string): Promise<void> {
+    await this.setNodeCompletion(nodeId, false);
+  }
+
+  private async setNodeCompletion(nodeId: string, completed: boolean): Promise<void> {
+    const action = completed ? "complete" : "uncomplete";
+    const res = await this.request(`${this.publicApiBase}/nodes/${encodeURIComponent(nodeId)}/${action}`, {
+      method: "POST",
+      headers: this.headers(),
+    }, "general");
+    if (!res.ok) {
+      throw new Error(`API POST /nodes/${nodeId}/${action} failed (${res.status}): ${await res.text()}`);
+    }
   }
 
   async createMirror(nodeId: string, parentId: string, position: "top" | "bottom" = "top"): Promise<WFCreateMirrorResponse> {

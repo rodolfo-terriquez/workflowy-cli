@@ -2,14 +2,16 @@ import type { Command } from "commander";
 import chalk from "chalk";
 import { WorkflowyAPI } from "../shared/api.ts";
 import { getDefaultAddPosition, parseAddPosition, requireToken } from "../shared/config.ts";
-import { getCacheNodeCount, markTargetDirty } from "../shared/cache.ts";
-import { parseLlmDocResponse } from "../shared/nodes.ts";
+import { getCacheNodeCount, markTargetDirty, setTargetUuid } from "../shared/cache.ts";
+import { normalizeNode, parseLlmDocResponse } from "../shared/nodes.ts";
 import { verifyInsertedChild } from "../shared/insert-verification.ts";
-import { resolveTargetReference } from "../shared/path.ts";
+import { markdownToRichText } from "../shared/markdown.ts";
+import { resolveTargetReference, resolveWriteTargetReference } from "../shared/path.ts";
 import { formatJson } from "../output/json.ts";
 import { buildWriteSuccessOutput } from "../shared/write-response.ts";
 import { isAgentMode } from "../agent.ts";
 import { exitWithError } from "../shared/errors.ts";
+import { isSystemTargetKey } from "../targets.ts";
 
 export function registerNodeAdd(program: Command): void {
   program
@@ -50,7 +52,9 @@ export function registerNodeAdd(program: Command): void {
           exitWithError("cache_empty", "Cache is empty.", "Run `wf cache:sync` first for path-based targets.");
         }
 
-        const resolved = resolveTargetReference(target);
+        const resolved = opts.after
+          ? resolveTargetReference(target)
+          : resolveWriteTargetReference(target);
         if (!resolved) {
           exitWithError("node_not_found", `Target "${target}" could not be resolved`, "Run `wf cache:sync` to refresh path lookups");
         }
@@ -65,24 +69,29 @@ export function registerNodeAdd(program: Command): void {
         const useJson = opts.format === "json" || isAgentMode();
         const shouldVerifyInsert = useJson || !!opts.after;
         const fatalOnVerificationFailure = isAgentMode() || !!opts.after;
-        const beforeChildren = shouldVerifyInsert ? await readLiveChildren(api, resolvedId) : [];
+        const beforeChildren = shouldVerifyInsert && opts.after
+          ? await readLiveChildren(api, resolvedId)
+          : [];
+
+        let createdNodeId: string | undefined;
+        let createdNodeText: string | undefined;
+        let materializedParentId: string | undefined;
+        let verificationStatus: "verified" | "mismatch" | "not_found" | "ambiguous" | "skipped" = "skipped";
 
         if (opts.after) {
           await api.editDoc(resolvedId, [
             { op: "insert", after: opts.after, items: [item] },
           ]);
         } else {
-          await api.editDoc(resolvedId, [
-            { op: "insert", under: resolvedId, items: [item], position },
-          ]);
+          const created = await api.createNode(resolvedId, text, {
+            ...(opts.note ? { note: markdownToRichText(opts.note) } : {}),
+            ...(opts.type !== "bullet" ? { layoutMode: toPublicLayoutMode(opts.type) } : {}),
+            position,
+          });
+          createdNodeId = created.item_id;
         }
 
-        markTargetDirty(resolvedId);
-        let createdNodeId: string | undefined;
-        let createdNodeText: string | undefined;
-        let verificationStatus: "verified" | "mismatch" | "not_found" | "ambiguous" | "skipped" = "skipped";
-
-        if (shouldVerifyInsert) {
+        if (opts.after && shouldVerifyInsert) {
           try {
             const afterChildren = await readLiveChildren(api, resolvedId);
             const verification = verifyInsertedChild({
@@ -109,7 +118,42 @@ export function registerNodeAdd(program: Command): void {
           } catch {
             verificationStatus = "skipped";
           }
+        } else if (createdNodeId && (shouldVerifyInsert || isSystemTargetKey(resolvedId))) {
+          try {
+            const createdNode = await api.getNode(createdNodeId);
+            if (createdNode.parent_id && isSystemTargetKey(resolvedId)) {
+              materializedParentId = createdNode.parent_id;
+              setTargetUuid(resolvedId, createdNode.parent_id);
+            }
+
+            if (shouldVerifyInsert) {
+              const verification = verifyInsertedChild({
+                beforeChildren: [],
+                afterChildren: [normalizeNode(createdNode)],
+                requestedText: text,
+                position,
+              });
+
+              verificationStatus = verification.status;
+              createdNodeId = verification.createdNodeId ?? createdNodeId;
+              createdNodeText = verification.createdNodeText ?? undefined;
+
+              if (verification.status !== "verified" && fatalOnVerificationFailure) {
+                exitWithError(
+                  "write_verification_failed",
+                  `node:add completed but could not verify the created node. ${verification.message}`,
+                  `Read node ${createdNodeId} live to inspect what was inserted before retrying.`,
+                );
+              }
+            }
+          } catch {
+            verificationStatus = "skipped";
+          }
         }
+
+        markTargetDirty(resolvedId);
+        if (materializedParentId) markTargetDirty(materializedParentId);
+        if (createdNodeId) markTargetDirty(createdNodeId);
 
         if (useJson) {
           console.log(formatJson(buildWriteSuccessOutput({
@@ -117,10 +161,11 @@ export function registerNodeAdd(program: Command): void {
             target,
             resolvedId,
             message: `Added to ${resolvedLabel}`,
-            affectedNodeIds: [resolvedId, createdNodeId],
-            dirtyNodeIds: [resolvedId],
+            affectedNodeIds: [resolvedId, materializedParentId, createdNodeId],
+            dirtyNodeIds: [resolvedId, materializedParentId, createdNodeId],
             details: {
-              parent_id: resolvedId,
+              parent_id: materializedParentId ?? resolvedId,
+              destination_target: materializedParentId ? resolvedId : undefined,
               insert_after_id: opts.after,
               created_node_id: createdNodeId,
               created_node_text: createdNodeText,
@@ -146,4 +191,13 @@ export function registerNodeAdd(program: Command): void {
 async function readLiveChildren(api: WorkflowyAPI, nodeId: string) {
   const data = await api.readDoc(nodeId, 1);
   return parseLlmDocResponse(data).node.children;
+}
+
+function toPublicLayoutMode(type: string): string {
+  switch (type) {
+    case "bullet": return "bullets";
+    case "code": return "code-block";
+    case "quote": return "quote-block";
+    default: return type;
+  }
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.3.3 - 2026-08-10
+
+- Route ordinary node create, update, delete, move, complete, and uncomplete operations through the documented public v1 API while retaining the LLM document API for nested, grouped, and insert-after edits.
+- Allow public API writes to unmaterialized Calendar targets such as `@today`, `@tomorrow`, and `@next-week`, then retain the materialized node mapping for immediate reads.
+- Preserve local bookmark precedence over built-in system destinations so bookmarked targets such as `@inbox` continue writing to the intended node.
+
 ## 3.3.2 - 2026-08-04
 
 - Add a configurable `defaults.addPosition` setting for `wf add` and `wf node:add`, while keeping `bottom` as the default.

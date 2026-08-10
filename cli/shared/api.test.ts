@@ -112,3 +112,97 @@ test("beta public API routes mirror reads, creation, and removal to beta.workflo
     globalThis.fetch = originalFetch;
   }
 });
+
+test("public API routes ordinary CRUD through the configured v1 environment", async () => {
+  saveConfig({
+    activeAccount: "default",
+    accounts: { default: { name: "default", token: "test-token" } },
+    api: {
+      environment: "production",
+      rateLimit: { requestsPerMinute: 60_000, exportMinIntervalSeconds: 0, maxRetries: 1 },
+    },
+  });
+
+  const requests: Array<{ url: string; method: string; body: string | null }> = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    requests.push({ url, method, body: typeof init?.body === "string" ? init.body : null });
+
+    if (method === "POST" && url.endsWith("/api/v1/nodes")) {
+      return Response.json({ item_id: "created-1" });
+    }
+    return Response.json({ status: "ok" });
+  }) as typeof fetch;
+
+  try {
+    const api = new WorkflowyAPI("test-token");
+    const created = await api.createNode("today", "Daily log", {
+      note: "Supporting detail",
+      position: "bottom",
+    });
+    await api.updateNode("created-1", { name: "Updated log", layoutMode: "h2" });
+    await api.moveNode("created-1", "tomorrow", "top");
+    await api.completeNode("created-1");
+    await api.uncompleteNode("created-1");
+    await api.deleteNode("created-1");
+
+    expect(created).toEqual({ item_id: "created-1" });
+    expect(requests.map((request) => [request.method, request.url])).toEqual([
+      ["POST", "https://workflowy.com/api/v1/nodes"],
+      ["POST", "https://workflowy.com/api/v1/nodes/created-1"],
+      ["POST", "https://workflowy.com/api/v1/nodes/created-1/move"],
+      ["POST", "https://workflowy.com/api/v1/nodes/created-1/complete"],
+      ["POST", "https://workflowy.com/api/v1/nodes/created-1/uncomplete"],
+      ["DELETE", "https://workflowy.com/api/v1/nodes/created-1"],
+    ]);
+    expect(JSON.parse(requests[0]!.body!)).toEqual({
+      parent_id: "today",
+      name: "Daily log",
+      note: "Supporting detail",
+      position: "bottom",
+    });
+    expect(JSON.parse(requests[1]!.body!)).toEqual({ name: "Updated log", layoutMode: "h2" });
+    expect(JSON.parse(requests[2]!.body!)).toEqual({ parent_id: "tomorrow", position: "top" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("advanced document edits remain on the LLM endpoint while public writes honor beta selection", async () => {
+  saveConfig({
+    activeAccount: "default",
+    accounts: { default: { name: "default", token: "test-token" } },
+    api: {
+      environment: "beta",
+      rateLimit: { requestsPerMinute: 60_000, exportMinIntervalSeconds: 0, maxRetries: 1 },
+    },
+  });
+
+  const requests: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    requests.push(url);
+    if (url.endsWith("/api/v1/nodes")) return Response.json({ item_id: "created-1" });
+    return Response.json({ status: "ok" });
+  }) as typeof fetch;
+
+  try {
+    const api = new WorkflowyAPI("test-token");
+    await api.createNode("today", "Public write");
+    await api.editDoc("root-1", [{
+      op: "insert",
+      under: "root-1",
+      items: [{ n: "Nested", c: [{ n: "Child" }] }],
+    }]);
+
+    expect(requests).toEqual([
+      "https://beta.workflowy.com/api/v1/nodes",
+      "https://beta.workflowy.com/api/llm/doc/edit",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

@@ -1,6 +1,6 @@
 import { findWorkflowyRepoRoot, getSelfUpdateCandidates } from "./self-update.ts";
 
-export const APP_VERSION = "3.3.2";
+export const APP_VERSION = "3.3.3";
 
 export interface VersionInfo {
   appVersion: string;

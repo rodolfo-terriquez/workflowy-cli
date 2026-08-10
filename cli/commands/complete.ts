@@ -26,14 +26,11 @@ export function registerNodeComplete(program: Command): void {
 
         const nodeId = resolveNodeArg(nodeIdOrPath);
 
-        await api.readDoc(nodeId, 1);
-        await api.editDoc(nodeId, [
-          {
-            op: "update",
-            ref: nodeId,
-            to: { x: opts.undo ? 0 : 1 },
-          },
-        ]);
+        if (opts.undo) {
+          await api.uncompleteNode(nodeId);
+        } else {
+          await api.completeNode(nodeId);
+        }
 
         const cached = getCacheNodeCount() > 0 ? getNodeById(nodeId) : null;
         markTargetDirty(nodeId);

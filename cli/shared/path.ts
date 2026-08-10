@@ -66,6 +66,31 @@ export function resolveTargetReference(input: string): ResolvedTargetReference |
   };
 }
 
+/**
+ * Resolve a destination for a public API create or move operation.
+ *
+ * Reads still require a materialized node ID, but the public API accepts
+ * built-in target keys such as `today` and creates missing Calendar nodes on
+ * demand. Existing bookmark and cached mappings continue to win so a local
+ * bookmark such as @inbox is never accidentally replaced by the built-in
+ * system inbox.
+ */
+export function resolveWriteTargetReference(input: string): ResolvedTargetReference | null {
+  const resolved = resolveTargetReference(input);
+  if (resolved) return resolved;
+
+  if (input.startsWith("@") && input.includes("/")) return null;
+
+  const target = resolveTarget(input);
+  if (target.source !== "builtin") return null;
+
+  return {
+    id: target.id,
+    label: input.startsWith("@") ? input : target.label,
+    source: target.source,
+  };
+}
+
 export function resolveCacheTargetReference(input: string): ResolvedTargetReference | null {
   if (input.startsWith("@") && input.includes("/")) {
     const resolved = resolvePathTraversal(input);

@@ -306,7 +306,7 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
     expect(response.jsonrpc).toBe("2.0");
     expect(response.id).toBe(1);
     expect(response.result.protocolVersion).toBe("2024-11-05");
-    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.3.2" });
+    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.3.3" });
     expect(response.result.capabilities).toEqual({ tools: {} });
     expect(response.result.instructions).toContain("## STOP — Read This First");
     expect(response.result.instructions).toContain("workflowy_targets");
@@ -1146,7 +1146,7 @@ test("returns MCP tool errors instead of blank text when the CLI call fails", as
       method: "tools/call",
       params: {
         name: "workflowy_read",
-        arguments: { target: "@today" },
+        arguments: { target: "Missing target" },
       },
     });
 
