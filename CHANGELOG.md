@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.3.4 - 2026-09-09
+
+- Document the `doc:edit` item fields (`n`, `d`, `l`, `x`, and `c`) and expand the nested outline example to show notes and todo completion state. Thanks to @waldyrious for PR #4.
+
 ## 3.3.3 - 2026-08-10
 
 - Route ordinary node create, update, delete, move, complete, and uncomplete operations through the documented public v1 API while retaining the LLM document API for nested, grouped, and insert-after edits.

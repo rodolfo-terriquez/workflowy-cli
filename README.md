@@ -54,7 +54,7 @@ This project is WorkFlowy-native:
 
 ## Status
 
-Current version: `3.3.3`
+Current version: `3.3.4`
 
 Implemented today:
 
@@ -73,7 +73,7 @@ To install a specific version or custom location:
 
 ```bash
 curl -fsSL https://github.com/rodolfo-terriquez/workflowy-cli/releases/latest/download/install.sh | \
-  WF_VERSION=v3.3.3 WF_INSTALL_DIR="$HOME/.local/bin" bash
+  WF_VERSION=v3.3.4 WF_INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
 ### Build from source
@@ -606,7 +606,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:read",
-    "wf_version": "3.3.3"
+    "wf_version": "3.3.4"
   },
   "node": {},
   "children": []
@@ -619,7 +619,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "search",
-    "wf_version": "3.3.3"
+    "wf_version": "3.3.4"
   },
   "nodes": []
 }
@@ -631,7 +631,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:add",
-    "wf_version": "3.3.3"
+    "wf_version": "3.3.4"
   },
   "message": "..."
 }
