@@ -276,6 +276,16 @@ WorkFlowy is an outline, so content that has sections, subpoints, or related bul
 
 Use `batch` for flat grouped operations such as several independent adds, moves, completes, or deletes. `batch` converts Markdown-style text to WorkFlowy rich text, but it does not expand indented markdown into child bullets.
 
+Each item in the `doc:edit` payload uses these fields:
+
+| Field | Type       | Description                                      |
+|-------|------------|--------------------------------------------------|
+| `n`   | string     | Node name (bullet text)                          |
+| `d`   | string     | Node note (appears below the bullet text)        |
+| `l`   | string     | Layout mode: `h1`, `h2`, `h3`, `todo`, etc.      |
+| `x`   | 0 or 1     | Completion state (for todo nodes)                |
+| `c`   | array      | Child items (same shape, nested recursively)     |
+
 ```bash
 cat > nested-outline.json <<'JSON'
 [
@@ -285,6 +295,7 @@ cat > nested-outline.json <<'JSON'
     "items": [
       {
         "n": "Project brief",
+        "d": "Background context and goals for this project",
         "l": "h2",
         "c": [
           {
@@ -296,10 +307,9 @@ cat > nested-outline.json <<'JSON'
             ]
           },
           {
-            "n": "Source links",
-            "c": [
-              { "n": "https://workflowy.com" }
-            ]
+            "n": "Review the outline",
+            "l": "todo",
+            "x": 0
           }
         ]
       }
