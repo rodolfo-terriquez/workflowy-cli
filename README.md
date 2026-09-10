@@ -343,7 +343,7 @@ Commands that accept a target support:
 
 - built-in locations like `@inbox`, `@today`, `@tomorrow`, `@calendar`, `@next-week`
 - user bookmarks returned by `wf targets`
-- raw node IDs
+- raw node IDs (full UUIDs or short IDs from "Copy Internal Link")
 - path traversal such as `@today/Meetings/Launch review`
 
 Public API create and move operations can use Calendar targets before their date nodes exist. For example, `wf add @today "Daily note"` materializes Today on demand. Existing local bookmarks still take precedence over same-named built-in destinations.
@@ -353,7 +353,7 @@ Examples:
 ```bash
 wf node:read "@today/Meetings"
 wf node:complete "@inbox/Buy groceries"
-wf node:move "@today/Fix bug" @inbox
+wf node:move 1bdae4aecf00 @projects  # short ID + user bookmark
 ```
 
 ## Cache Model
