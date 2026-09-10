@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.3.5 - 2026-09-09
+
+- Fix `doc:edit` / MCP `edit_doc` updates, moves, and deletes for references nested anywhere under the requested root by planning calls against each node's live parent; reject out-of-root references instead of reporting false success.
+- Add `wf completions --shell bash|zsh|fish` to print completion scripts without installing files or modifying shell configuration.
+
 ## 3.3.4 - 2026-09-09
 
 - Document the `doc:edit` item fields (`n`, `d`, `l`, `x`, and `c`) and expand the nested outline example to show notes and todo completion state. Thanks to @waldyrious for PR #4.

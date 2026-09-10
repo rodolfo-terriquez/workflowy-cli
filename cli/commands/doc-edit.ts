@@ -1,9 +1,10 @@
 import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
-import { WorkflowyAPI, type LlmDocItem, type LlmDocOperation } from "../shared/api.ts";
+import { WorkflowyAPI, toLlmDocId, type LlmDocItem, type LlmDocOperation } from "../shared/api.ts";
 import { requireToken } from "../shared/config.ts";
 import { getCacheNodeCount, getNodeById, markTargetDirty } from "../shared/cache.ts";
+import { parseLlmDocResponse } from "../shared/nodes.ts";
 import { findByNameOrPath, isDirectId, resolveTargetReference } from "../shared/path.ts";
 import { formatJson } from "../output/json.ts";
 import { isAgentMode } from "../agent.ts";
@@ -22,8 +23,19 @@ export interface DocEditInputOperation {
   to?: Partial<LlmDocItem>;
 }
 
-interface ResolvedDocEditOperation extends LlmDocOperation {
-  original?: DocEditInputOperation;
+export interface DocEditNodeInfo {
+  id: string;
+  parentId: string | null;
+  ancestorIds: string[];
+}
+
+export interface PlannedDocEditCall {
+  root: string;
+  operations: LlmDocOperation[];
+}
+
+interface DocEditPlannerDeps {
+  getNodeInfo: (ref: string) => Promise<DocEditNodeInfo | null>;
 }
 
 class DocEditError extends Error {
@@ -159,7 +171,7 @@ function resolveDocEditReference(input: string, role: string): string {
   failDocEdit("node_not_found", `${role} "${input}" not found`, "Use a node ID, @target, cached path, or run `wf cache:sync` first.");
 }
 
-export function normalizeDocEditOperations(rawOps: unknown[]): ResolvedDocEditOperation[] {
+export function normalizeDocEditOperations(rawOps: unknown[]): LlmDocOperation[] {
   return rawOps.map((rawOp, index) => {
     assertPlainObject(rawOp, "invalid_operation", `operations[${index}] must be an object`);
     const op = rawOp.op;
@@ -167,7 +179,7 @@ export function normalizeDocEditOperations(rawOps: unknown[]): ResolvedDocEditOp
       failDocEdit("invalid_operation", `operations[${index}].op must be one of insert, update, delete, move`);
     }
 
-    const base: ResolvedDocEditOperation = { op: op as LlmDocOperation["op"], original: rawOp as unknown as DocEditInputOperation };
+    const base: LlmDocOperation = { op: op as LlmDocOperation["op"] };
 
     if (rawOp.position !== undefined) {
       if (rawOp.position !== "top" && rawOp.position !== "bottom") {
@@ -216,6 +228,115 @@ export function normalizeDocEditOperations(rawOps: unknown[]): ResolvedDocEditOp
   });
 }
 
+function comparableDocId(id: string): string {
+  return toLlmDocId(id).toLowerCase();
+}
+
+function sameDocId(left: string, right: string): boolean {
+  return comparableDocId(left) === comparableDocId(right);
+}
+
+function isWithinDocRoot(root: string, node: DocEditNodeInfo): boolean {
+  return sameDocId(root, node.id) || node.ancestorIds.some((ancestorId) => sameDocId(root, ancestorId));
+}
+
+async function requirePlannableNode(
+  root: string,
+  ref: string,
+  role: string,
+  deps: DocEditPlannerDeps,
+): Promise<DocEditNodeInfo> {
+  const node = await deps.getNodeInfo(ref);
+  if (!node) {
+    failDocEdit("node_not_found", `${role} "${ref}" not found`, "Use a valid node ID or refresh the cache before retrying.");
+  }
+  if (!isWithinDocRoot(root, node)) {
+    failDocEdit(
+      "ref_not_under_root",
+      `${role} "${ref}" is not within document root "${root}"`,
+      "Choose a root that contains every referenced node.",
+    );
+  }
+  return node;
+}
+
+function appendPlannedCall(calls: PlannedDocEditCall[], root: string, operation: LlmDocOperation): void {
+  const previous = calls.at(-1);
+  if (previous && sameDocId(previous.root, root)) {
+    previous.operations.push(operation);
+    return;
+  }
+  calls.push({ root, operations: [operation] });
+}
+
+export async function planDocEditCalls(
+  root: string,
+  operations: LlmDocOperation[],
+  deps: DocEditPlannerDeps,
+): Promise<PlannedDocEditCall[]> {
+  const calls: PlannedDocEditCall[] = [];
+  const plannedParents = new Map<string, string | null>();
+
+  for (const operation of operations) {
+    if (operation.op === "insert") {
+      let callRoot: string;
+
+      if (operation.under) {
+        const parent = await requirePlannableNode(root, operation.under, "under", deps);
+        callRoot = parent.id;
+
+        if (operation.after) {
+          const sibling = await requirePlannableNode(root, operation.after, "after", deps);
+          if (!sibling.parentId || !sameDocId(parent.id, sibling.parentId)) {
+            failDocEdit(
+              "invalid_target",
+              `after "${operation.after}" is not a direct child of under "${operation.under}"`,
+              "Choose an after node whose parent matches under.",
+            );
+          }
+        }
+      } else if (operation.after) {
+        const sibling = await requirePlannableNode(root, operation.after, "after", deps);
+        if (!sibling.parentId) {
+          failDocEdit("invalid_target", `after "${operation.after}" has no parent`, "Choose a non-root node for insert-after.");
+        }
+        callRoot = sibling.parentId;
+      } else {
+        failDocEdit("invalid_operation", "insert requires under or after");
+      }
+
+      appendPlannedCall(calls, callRoot, operation);
+      continue;
+    }
+
+    const ref = operation.ref;
+    if (!ref) {
+      failDocEdit("invalid_operation", `${operation.op} requires ref`);
+    }
+    const node = await requirePlannableNode(root, ref, "ref", deps);
+    const nodeKey = comparableDocId(node.id);
+    const parentId = plannedParents.has(nodeKey) ? plannedParents.get(nodeKey) ?? null : node.parentId;
+
+    if (operation.op === "update" && sameDocId(root, node.id)) {
+      appendPlannedCall(calls, node.id, operation);
+      continue;
+    }
+
+    if (!parentId) {
+      failDocEdit("invalid_target", `ref "${ref}" has no parent`, `Cannot ${operation.op} a top-level root node.`);
+    }
+    appendPlannedCall(calls, parentId, operation);
+
+    if (operation.op === "move" && operation.under) {
+      plannedParents.set(nodeKey, operation.under);
+    } else if (operation.op === "delete") {
+      plannedParents.set(nodeKey, null);
+    }
+  }
+
+  return calls;
+}
+
 async function readOperationsInput(operationsJson?: string): Promise<unknown[]> {
   if (operationsJson !== undefined) {
     return unwrapOperationsPayload(parseOperationsJson(operationsJson));
@@ -228,8 +349,8 @@ async function readOperationsInput(operationsJson?: string): Promise<unknown[]> 
   return unwrapOperationsPayload(parseOperationsJson(stdinText));
 }
 
-function collectDirtyIds(root: string, operations: LlmDocOperation[]): string[] {
-  const ids = new Set<string>([root]);
+function collectDirtyIds(root: string, operations: LlmDocOperation[], callRoots: string[] = []): string[] {
+  const ids = new Set<string>([root, ...callRoots]);
   for (const op of operations) {
     if (op.under) ids.add(op.under);
     if (op.after) ids.add(op.after);
@@ -238,6 +359,18 @@ function collectDirtyIds(root: string, operations: LlmDocOperation[]): string[] 
     if (cachedRef?.parent_id) ids.add(cachedRef.parent_id);
   }
   return Array.from(ids);
+}
+
+async function resolveLiveDocEditNodeInfo(api: WorkflowyAPI, ref: string): Promise<DocEditNodeInfo | null> {
+  const raw = await api.readDoc(ref, 0);
+  const { node, ancestors } = parseLlmDocResponse(raw);
+  if (!node.id) return null;
+
+  return {
+    id: node.id,
+    parentId: ancestors.at(-1)?.id ?? null,
+    ancestorIds: ancestors.map((ancestor) => ancestor.id),
+  };
 }
 
 function printDocEditError(error: unknown): never {
@@ -262,10 +395,39 @@ export function registerDocEdit(program: Command): void {
         const rawOps = await readOperationsInput(operationsJson);
         const operations = normalizeDocEditOperations(rawOps);
 
-        await api.readDoc(resolvedRoot, 1);
-        const response = await api.editDoc(resolvedRoot, operations);
-        const dirtyIds = collectDirtyIds(resolvedRoot, operations);
+        const nodeInfoCache = new Map<string, Promise<DocEditNodeInfo | null>>();
+        const getNodeInfo = (ref: string): Promise<DocEditNodeInfo | null> => {
+          const key = comparableDocId(ref);
+          const existing = nodeInfoCache.get(key);
+          if (existing) return existing;
+          const pending = resolveLiveDocEditNodeInfo(api, ref);
+          nodeInfoCache.set(key, pending);
+          return pending;
+        };
+
+        const rootInfo = await getNodeInfo(resolvedRoot);
+        if (!rootInfo) {
+          failDocEdit("node_not_found", `root "${root}" not found`, "Use a valid node ID, @target, or cached path.");
+        }
+        const calls = await planDocEditCalls(rootInfo.id, operations, { getNodeInfo });
+        const dirtyIds = collectDirtyIds(resolvedRoot, operations, calls.map((call) => call.root));
         for (const id of dirtyIds) markTargetDirty(id);
+
+        const responses: Array<Record<string, unknown>> = [];
+        for (const call of calls) {
+          try {
+            responses.push(await api.editDoc(call.root, call.operations));
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            failDocEdit(
+              "edit_failed",
+              `Structured edit failed after ${responses.length} of ${calls.length} API calls: ${detail}`,
+              responses.length > 0
+                ? "Some earlier operations may have been applied. Read the document live before retrying."
+                : "No operation group was confirmed. Read the document live before retrying.",
+            );
+          }
+        }
 
         const useJson = opts.format === "json" || isAgentMode();
         const output = {
@@ -275,6 +437,7 @@ export function registerDocEdit(program: Command): void {
             resolved_id: resolvedRoot,
             operation_count: operations.length,
             operation_types: Array.from(new Set(operations.map((op) => op.op))),
+            api_calls: calls.length,
             timestamp: new Date().toISOString(),
             wf_version: APP_VERSION,
           },
@@ -282,7 +445,7 @@ export function registerDocEdit(program: Command): void {
           message: `Applied ${operations.length} operation${operations.length === 1 ? "" : "s"} to ${resolvedRoot}`,
           affected_node_ids: dirtyIds,
           dirty_node_ids: dirtyIds,
-          response,
+          response: responses.length === 1 ? responses[0] : responses,
         };
 
         if (useJson) {

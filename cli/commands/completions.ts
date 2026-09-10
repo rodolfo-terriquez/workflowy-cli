@@ -24,6 +24,8 @@ const COMMANDS = [
   "mcp", "doctor", "status", "completions", "login", "self:update",
 ];
 
+export type CompletionShell = "bash" | "zsh" | "fish";
+
 function generateZshCompletion(): string {
   const cmds = COMMANDS.map((c) => `'${c}'`).join(" ");
   return `#compdef wf
@@ -79,25 +81,42 @@ function detectShell(): string {
   return "bash";
 }
 
+function parseCompletionShell(shell: string): CompletionShell {
+  if (shell === "bash" || shell === "zsh" || shell === "fish") return shell;
+  throw new Error(`Unsupported shell "${shell}". Expected bash, zsh, or fish.`);
+}
+
+export function generateCompletion(shell: string): string {
+  switch (parseCompletionShell(shell)) {
+    case "zsh": return generateZshCompletion();
+    case "fish": return generateFishCompletion();
+    case "bash": return generateBashCompletion();
+  }
+}
+
 export function registerCompletions(program: Command): void {
   const cmd = program
     .command("completions")
-    .description("Manage shell completions");
+    .description("Print or install shell completions")
+    .option("--shell <type>", "Shell type (bash|zsh|fish)")
+    .action((opts: { shell?: string }) => {
+      const shell = opts.shell ?? detectShell();
+      process.stdout.write(generateCompletion(shell));
+    });
 
   cmd
     .command("install")
     .description("Install shell completions")
     .option("--shell <type>", "Shell type (bash|zsh|fish)")
     .action((opts: { shell?: string }) => {
-      const shell = opts.shell ?? detectShell();
+      const shell = parseCompletionShell(opts.shell ?? detectShell());
       const home = homedir();
 
-      let script: string;
+      const script = generateCompletion(shell);
       let targetPath: string;
 
       switch (shell) {
         case "zsh": {
-          script = generateZshCompletion();
           targetPath = join(home, ".zsh", "completions", "_wf");
           const dir = join(home, ".zsh", "completions");
           if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -113,15 +132,13 @@ export function registerCompletions(program: Command): void {
           break;
         }
         case "fish": {
-          script = generateFishCompletion();
           targetPath = join(home, ".config", "fish", "completions", "wf.fish");
           const dir = join(home, ".config", "fish", "completions");
           if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
           writeFileSync(targetPath, script, "utf-8");
           break;
         }
-        default: {
-          script = generateBashCompletion();
+        case "bash": {
           targetPath = join(home, ".local", "share", "bash-completion", "completions", "wf");
           const dir = join(home, ".local", "share", "bash-completion", "completions");
           if (!existsSync(dir)) mkdirSync(dir, { recursive: true });

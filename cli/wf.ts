@@ -175,7 +175,7 @@ function printColoredHelp(): void {
         ["auth status",                "Show authentication and setup status"],
         ["self:update",                "Pull latest git changes and rebuild wf"],
         ["doctor",                     "Diagnose common setup issues"],
-        ["completions install",        "Install shell completions (bash/zsh/fish)"],
+        ["completions [install]",      "Print or install completions (bash/zsh/fish)"],
         ["mcp",                        "Start as MCP server (stdio or HTTP)"],
       ],
     },

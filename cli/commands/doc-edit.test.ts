@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { normalizeDocEditOperations } from "./doc-edit.ts";
+import { normalizeDocEditOperations, planDocEditCalls, type DocEditNodeInfo } from "./doc-edit.ts";
 import { resetCacheDb, replaceAllNodes } from "../shared/cache.ts";
 import { saveConfig } from "../shared/config.ts";
 import { cacheTargets, resetDb } from "../shared/db.ts";
@@ -81,4 +81,79 @@ test("normalizeDocEditOperations rejects unsupported line types", async () => {
       { op: "insert", under: "root-1", items: [{ n: "Nope", l: "unsupported" }] },
     ])).toThrow("unsupported line type");
   });
+});
+
+test("planDocEditCalls roots nested operations at their live parent", async () => {
+  const nodes = new Map<string, DocEditNodeInfo>([
+    ["root-1", { id: "root-1", parentId: null, ancestorIds: [] }],
+    ["section-1", { id: "section-1", parentId: "root-1", ancestorIds: ["root-1"] }],
+    ["child-1", { id: "child-1", parentId: "section-1", ancestorIds: ["root-1", "section-1"] }],
+  ]);
+
+  const calls = await planDocEditCalls(
+    "root-1",
+    [
+      { op: "update", ref: "child-1", to: { n: "Renamed" } },
+      { op: "move", ref: "child-1", under: "root-1", position: "bottom" },
+      { op: "delete", ref: "child-1" },
+    ],
+    { getNodeInfo: async (ref) => nodes.get(ref) ?? null },
+  );
+
+  expect(calls).toEqual([
+    {
+      root: "section-1",
+      operations: [
+        { op: "update", ref: "child-1", to: { n: "Renamed" } },
+        { op: "move", ref: "child-1", under: "root-1", position: "bottom" },
+      ],
+    },
+    {
+      root: "root-1",
+      operations: [{ op: "delete", ref: "child-1" }],
+    },
+  ]);
+});
+
+test("planDocEditCalls rejects references outside the requested root", async () => {
+  await expect(planDocEditCalls(
+    "root-1",
+    [{ op: "update", ref: "outside-1", to: { n: "Nope" } }],
+    {
+      getNodeInfo: async () => ({
+        id: "outside-1",
+        parentId: "other-root",
+        ancestorIds: ["other-root"],
+      }),
+    },
+  )).rejects.toMatchObject({ code: "ref_not_under_root" });
+});
+
+test("planDocEditCalls uses the insertion target as the API root", async () => {
+  const calls = await planDocEditCalls(
+    "root-1",
+    [{ op: "insert", under: "section-1", items: [{ n: "Nested child" }] }],
+    {
+      getNodeInfo: async (ref) => ref === "section-1"
+        ? { id: "section-1", parentId: "root-1", ancestorIds: ["root-1"] }
+        : null,
+    },
+  );
+
+  expect(calls).toEqual([{
+    root: "section-1",
+    operations: [{ op: "insert", under: "section-1", items: [{ n: "Nested child" }] }],
+  }]);
+});
+
+test("planDocEditCalls rejects insert-after nodes from a different parent", async () => {
+  await expect(planDocEditCalls(
+    "root-1",
+    [{ op: "insert", under: "section-1", after: "other-child", items: [{ n: "Nested child" }] }],
+    {
+      getNodeInfo: async (ref) => ref === "section-1"
+        ? { id: "section-1", parentId: "root-1", ancestorIds: ["root-1"] }
+        : { id: "other-child", parentId: "other-section", ancestorIds: ["root-1", "other-section"] },
+    },
+  )).rejects.toMatchObject({ code: "invalid_target" });
 });

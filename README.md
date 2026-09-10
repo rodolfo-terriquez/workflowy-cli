@@ -54,7 +54,7 @@ This project is WorkFlowy-native:
 
 ## Status
 
-Current version: `3.3.4`
+Current version: `3.3.5`
 
 Implemented today:
 
@@ -73,7 +73,7 @@ To install a specific version or custom location:
 
 ```bash
 curl -fsSL https://github.com/rodolfo-terriquez/workflowy-cli/releases/latest/download/install.sh | \
-  WF_VERSION=v3.3.4 WF_INSTALL_DIR="$HOME/.local/bin" bash
+  WF_VERSION=v3.3.5 WF_INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
 ### Build from source
@@ -323,7 +323,7 @@ wf doc:edit @inbox < nested-outline.json
 wf doc:edit @inbox < nested-outline.json --agent
 ```
 
-`doc:edit` also supports insert-after, richer line types, layout changes, updates, moves, and deletes.
+`doc:edit` also supports insert-after, richer line types, layout changes, updates, moves, and deletes. References may point anywhere within the requested root subtree; references outside that root fail before edits are sent.
 
 ### Batch mode
 
@@ -445,6 +445,12 @@ wf> exit
 Shell completions:
 
 ```bash
+# Print a completion script for a shell/plugin manager to consume
+wf completions --shell zsh
+wf completions --shell bash
+wf completions --shell fish
+
+# Or install it in the default location
 wf completions install
 wf completions install --shell zsh
 wf completions install --shell fish
@@ -606,7 +612,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:read",
-    "wf_version": "3.3.4"
+    "wf_version": "3.3.5"
   },
   "node": {},
   "children": []
@@ -619,7 +625,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "search",
-    "wf_version": "3.3.4"
+    "wf_version": "3.3.5"
   },
   "nodes": []
 }
@@ -631,7 +637,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:add",
-    "wf_version": "3.3.4"
+    "wf_version": "3.3.5"
   },
   "message": "..."
 }
