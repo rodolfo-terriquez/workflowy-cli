@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { existsSync } from "fs";
 import { getAccountCacheDbPath, getActiveAccountName, getApiEnvironment, getDbPath } from "./config.ts";
-import { cleanHtml } from "./nodes.ts";
+import { cleanHtml, getMirrorRelationship, type MirrorRelationship } from "./nodes.ts";
 
 const accountDbs = new Map<string, Database>();
 
@@ -65,6 +65,9 @@ function initCacheSchema(db: Database): void {
       priority    REAL,
       created_at  INTEGER,
       modified_at INTEGER,
+      mirror_role TEXT,
+      mirror_origin_id TEXT,
+      mirror_ids TEXT,
       synced_at   INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_id);
@@ -83,6 +86,8 @@ function initCacheSchema(db: Database): void {
     );
   `);
 
+  ensureNodeMirrorColumns(db);
+
   try {
     db.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS nodes_trigram USING fts5(
@@ -95,6 +100,20 @@ function initCacheSchema(db: Database): void {
     `);
   } catch {
     // Older SQLite builds may not have the trigram tokenizer available.
+  }
+}
+
+function ensureNodeMirrorColumns(db: Database): void {
+  const columns = new Set(
+    (db.query("PRAGMA table_info(nodes)").all() as Array<{ name: string }>).map((column) => column.name),
+  );
+  const requiredColumns: Array<[string, string]> = [
+    ["mirror_role", "TEXT"],
+    ["mirror_origin_id", "TEXT"],
+    ["mirror_ids", "TEXT"],
+  ];
+  for (const [name, type] of requiredColumns) {
+    if (!columns.has(name)) db.exec(`ALTER TABLE nodes ADD COLUMN ${name} ${type}`);
   }
 }
 
@@ -222,7 +241,29 @@ export interface CachedNode {
   priority: number | null;
   created_at: number | null;
   modified_at: number | null;
+  mirror_role: "mirror" | "origin" | null;
+  mirror_origin_id: string | null;
+  mirror_ids: string | null;
   synced_at: number;
+}
+
+export function getCachedMirrorRelationship(
+  node: Pick<CachedNode, "mirror_role" | "mirror_origin_id" | "mirror_ids">,
+): MirrorRelationship | undefined {
+  if (node.mirror_role === "mirror") {
+    return { role: "mirror", origin_id: node.mirror_origin_id, mirror_ids: [] };
+  }
+  if (node.mirror_role === "origin") {
+    let mirrorIds: string[] = [];
+    try {
+      const parsed = JSON.parse(node.mirror_ids ?? "[]");
+      if (Array.isArray(parsed)) mirrorIds = parsed.filter((id): id is string => typeof id === "string");
+    } catch {
+      mirrorIds = [];
+    }
+    return { role: "origin", origin_id: null, mirror_ids: mirrorIds };
+  }
+  return undefined;
 }
 
 export function getNodeById(id: string): CachedNode | null {
@@ -433,7 +474,10 @@ export function replaceAllNodes(
     parent_id?: string | null;
     name: string;
     note?: string | null;
-    data?: { layoutMode?: string };
+    data?: {
+      layoutMode?: string;
+      mirror?: { origin_id?: string | null; mirror_ids?: string[] };
+    };
     completedAt?: number | null;
     priority?: number;
     createdAt?: number;
@@ -454,11 +498,12 @@ export function replaceAllNodes(
     }
 
     const insert = db.query(`
-      INSERT INTO nodes (id, parent_id, name, note, line_type, completed, priority, created_at, modified_at, synced_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO nodes (id, parent_id, name, note, line_type, completed, priority, created_at, modified_at, mirror_role, mirror_origin_id, mirror_ids, synced_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const n of nodes) {
+      const mirror = getMirrorRelationship(n.data?.mirror);
       insert.run(
         n.id,
         n.parent_id ?? null,
@@ -469,6 +514,9 @@ export function replaceAllNodes(
         n.priority ?? 0,
         n.createdAt ?? null,
         n.modifiedAt ?? null,
+        mirror?.role ?? null,
+        mirror?.origin_id ?? null,
+        mirror?.role === "origin" ? JSON.stringify(mirror.mirror_ids) : null,
         syncedAt
       );
     }
@@ -511,7 +559,10 @@ export function upsertNodesFromApi(
     parent_id?: string | null;
     name: string;
     note?: string | null;
-    data?: { layoutMode?: string };
+    data?: {
+      layoutMode?: string;
+      mirror?: { origin_id?: string | null; mirror_ids?: string[] };
+    };
     completedAt?: number | null;
     priority?: number;
     createdAt?: number;
@@ -523,11 +574,12 @@ export function upsertNodesFromApi(
 
   const txn = db.transaction(() => {
     const upsert = db.query(`
-      INSERT OR REPLACE INTO nodes (id, parent_id, name, note, line_type, completed, priority, created_at, modified_at, synced_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO nodes (id, parent_id, name, note, line_type, completed, priority, created_at, modified_at, mirror_role, mirror_origin_id, mirror_ids, synced_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const n of nodes) {
+      const mirror = getMirrorRelationship(n.data?.mirror);
       upsert.run(
         n.id,
         n.parent_id ?? null,
@@ -538,6 +590,9 @@ export function upsertNodesFromApi(
         n.priority ?? 0,
         n.createdAt ?? null,
         n.modifiedAt ?? null,
+        mirror?.role ?? null,
+        mirror?.origin_id ?? null,
+        mirror?.role === "origin" ? JSON.stringify(mirror.mirror_ids) : null,
         syncedAt
       );
     }

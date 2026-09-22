@@ -223,7 +223,12 @@ test("legacy single-account cache migrates into the matching account database", 
   legacyDb.close(false);
 
   expect(cacheModule.getCacheNodeCount()).toBe(1);
-  expect(cacheModule.getNodeById("legacy-root")?.name).toBe("Legacy root");
+  expect(cacheModule.getNodeById("legacy-root")).toMatchObject({
+    name: "Legacy root",
+    mirror_role: null,
+    mirror_origin_id: null,
+    mirror_ids: null,
+  });
 
   configModule.setAccountOverride("work");
   expect(cacheModule.getCacheNodeCount()).toBe(0);

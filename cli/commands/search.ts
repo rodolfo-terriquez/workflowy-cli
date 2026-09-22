@@ -4,7 +4,7 @@ import chalk from "chalk";
 import { WorkflowyAPI, type WFNode } from "../shared/api.ts";
 import { getActiveAccountName, loadConfig, requireToken } from "../shared/config.ts";
 import { normalizeNode, cleanHtml, parseLlmDocResponse, type FlatNode } from "../shared/nodes.ts";
-import { getCacheNodeCount, getCacheAgeSeconds, isCacheStale } from "../shared/cache.ts";
+import { getCacheNodeCount, getCacheAgeSeconds, getCachedMirrorRelationship, isCacheStale } from "../shared/cache.ts";
 import { formatJson } from "../output/json.ts";
 import { formatTsv, formatCsv, type TsvRow } from "../shared/output-formats.ts";
 import { isAgentMode } from "../agent.ts";
@@ -86,7 +86,9 @@ async function searchLive(
   const nodeById = new Map(allNodes.map((node) => [node.id, node]));
   outputResults(query, results.map((r) => ({
     id: r.id, name: r.name, note: r.note, line_type: r.type, completed: r.completed ? 1 : 0,
-    parent_id: nodeById.get(r.id)?.parent_id ?? null, priority: null, created_at: null, modified_at: null, synced_at: 0,
+    parent_id: nodeById.get(r.id)?.parent_id ?? null, priority: null, created_at: null, modified_at: null,
+    mirror_role: r.mirror?.role ?? null, mirror_origin_id: r.mirror?.origin_id ?? null,
+    mirror_ids: r.mirror?.role === "origin" ? JSON.stringify(r.mirror.mirror_ids) : null, synced_at: 0,
     parent_path: buildLiveParentPath(nodeById.get(r.id)?.parent_id ?? null, nodeById), rank: 0, match_type: "fts" as const,
   })), "live", format, target);
 }
@@ -200,17 +202,21 @@ function outputResults(
           smart_search_available: !!config.llm?.apiKey,
           wf_version: APP_VERSION,
         },
-        nodes: results.map((r) => ({
-          id: r.id,
-          name: cleanHtml(r.name),
-          note: r.note ? cleanHtml(r.note) : null,
-          type: r.line_type ?? "bullet",
-          completed: r.completed === 1,
-          parent_path: r.parent_path,
-          match_type: r.match_type,
-          hasMore: false,
-          children: [],
-        })),
+        nodes: results.map((r) => {
+          const mirror = getCachedMirrorRelationship(r);
+          return {
+            id: r.id,
+            name: cleanHtml(r.name),
+            note: r.note ? cleanHtml(r.note) : null,
+            type: r.line_type ?? "bullet",
+            completed: r.completed === 1,
+            parent_path: r.parent_path,
+            match_type: r.match_type,
+            ...(mirror ? { mirror } : {}),
+            hasMore: false,
+            children: [],
+          };
+        }),
       })
     );
     return;

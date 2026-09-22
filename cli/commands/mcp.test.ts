@@ -306,7 +306,7 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
     expect(response.jsonrpc).toBe("2.0");
     expect(response.id).toBe(1);
     expect(response.result.protocolVersion).toBe("2024-11-05");
-    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.3.5" });
+    expect(response.result.serverInfo).toEqual({ name: "workflowy", version: "3.3.6" });
     expect(response.result.capabilities).toEqual({ tools: {} });
     expect(response.result.instructions).toContain("## STOP — Read This First");
     expect(response.result.instructions).toContain("workflowy_targets");
@@ -317,7 +317,7 @@ test("responds to newline-delimited initialize messages over stdio", async () =>
     expect(response.result.instructions).toContain("@today");
     expect(response.result.instructions).toContain("<time startYear=\"2026\" startMonth=\"6\" startDay=\"3\">Jun 3, 2026</time>");
     expect(response.result.instructions).toContain("auto-refreshes the local cache");
-    expect(response.result.instructions).toContain("## Mirrors (beta public API)");
+    expect(response.result.instructions).toContain("## Mirrors");
     expect(response.result.instructions).toContain("data.mirror.origin_id");
     expect(response.result.instructions).toContain("not an independent copy");
   });

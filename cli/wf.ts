@@ -107,8 +107,8 @@ function printColoredHelp(): void {
         ["export <target>",            "Export a subtree (outline, JSON, markdown)"],
         ["doc:edit <root>",            "Write nested outline edits in one API call"],
         ["mirror:info <node>",         "Inspect mirror/origin relationship data (beta API)"],
-        ["mirror:create <node> <to>",  "Create a live mirror (beta API)"],
-        ["mirror:remove <node>",       "Remove a mirror root, preserving its origin (beta API)"],
+        ["mirror:create <node> <to>",  "Create a live mirror"],
+        ["mirror:remove <node>",       "Remove a mirror root, preserving its origin"],
       ],
     },
     {

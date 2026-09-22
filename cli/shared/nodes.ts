@@ -36,6 +36,12 @@ function cleanHtml(html: string): string {
 
 export { cleanHtml };
 
+export interface MirrorRelationship {
+  role: "mirror" | "origin";
+  origin_id: string | null;
+  mirror_ids: string[];
+}
+
 export interface FlatNode {
   id: string;
   name: string;
@@ -43,6 +49,7 @@ export interface FlatNode {
   type: "bullet" | "todo" | "h1" | "h2" | "h3" | "code-block" | "quote-block" | "table" | "p";
   completed: boolean;
   hasMore: boolean;
+  mirror?: MirrorRelationship;
   children: FlatNode[];
 }
 
@@ -50,6 +57,7 @@ export interface FlatNode {
 
 export function normalizeNode(raw: WFNode, children: FlatNode[] = []): FlatNode {
   const layoutMode = raw.data?.layoutMode ?? "bullets";
+  const mirror = getMirrorRelationship(raw.data?.mirror);
   return {
     id: raw.id,
     name: cleanHtml(raw.name),
@@ -57,6 +65,7 @@ export function normalizeNode(raw: WFNode, children: FlatNode[] = []): FlatNode 
     type: layoutModeToType(layoutMode),
     completed: raw.completedAt !== null && raw.completedAt !== undefined,
     hasMore: false,
+    ...(mirror ? { mirror } : {}),
     children,
   };
 }
@@ -83,6 +92,10 @@ export function parseLlmDocNode(raw: Record<string, unknown>): FlatNode {
   const lineType = raw.l ? String(raw.l) : null;
   const completed = raw.x === 1;
   const hasMore = raw["+"] === 1;
+  const hasMirrorMarker = Object.prototype.hasOwnProperty.call(raw, "m");
+  const mirror: MirrorRelationship | undefined = hasMirrorMarker
+    ? { role: "mirror", origin_id: typeof raw.m === "string" ? raw.m : null, mirror_ids: [] }
+    : undefined;
 
   const type = lineType ? layoutModeToType(lineType) : "bullet";
   name = cleanHtml(name);
@@ -96,7 +109,30 @@ export function parseLlmDocNode(raw: Record<string, unknown>): FlatNode {
     }
   }
 
-  return { id, name, note, type, completed, hasMore, children };
+  return { id, name, note, type, completed, hasMore, ...(mirror ? { mirror } : {}), children };
+}
+
+export function getMirrorRelationship(
+  mirror: { origin_id?: string | null; mirror_ids?: string[] } | undefined,
+): MirrorRelationship | undefined {
+  if (!mirror || typeof mirror !== "object") return undefined;
+  if (Object.prototype.hasOwnProperty.call(mirror, "origin_id")) {
+    return {
+      role: "mirror",
+      origin_id: typeof mirror.origin_id === "string" ? mirror.origin_id : null,
+      mirror_ids: [],
+    };
+  }
+  if (Object.prototype.hasOwnProperty.call(mirror, "mirror_ids")) {
+    return {
+      role: "origin",
+      origin_id: null,
+      mirror_ids: Array.isArray(mirror.mirror_ids)
+        ? mirror.mirror_ids.filter((id): id is string => typeof id === "string")
+        : [],
+    };
+  }
+  return undefined;
 }
 
 export function parseLlmDocResponse(

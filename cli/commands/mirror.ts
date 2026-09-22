@@ -16,7 +16,7 @@ export function registerMirrorCommands(program: Command): void {
     .command("mirror:info <nodeIdOrPath>")
     .description("Show beta API mirror relationship data for a node")
     .action(async (nodeIdOrPath: string) => {
-      requireBetaApi();
+      requireBetaMirrorMetadataApi();
       const api = new WorkflowyAPI(requireToken());
       const nodeId = resolveNodeArg(nodeIdOrPath);
       const node = await api.getNode(nodeId);
@@ -43,10 +43,9 @@ export function registerMirrorCommands(program: Command): void {
 
   program
     .command("mirror:create <nodeIdOrPath> <target>")
-    .description("Create a live mirror under another node (beta public API)")
+    .description("Create a live mirror under another node")
     .option("--position <pos>", "Position: top or bottom", "top")
     .action(async (nodeIdOrPath: string, target: string, opts: { position: string }) => {
-      requireBetaApi();
       const position = parsePosition(opts.position);
       const sourceId = resolveNodeArg(nodeIdOrPath);
       const destination = resolveDestination(target);
@@ -78,10 +77,9 @@ export function registerMirrorCommands(program: Command): void {
 
   program
     .command("mirror:remove <nodeIdOrPath>")
-    .description("Remove one mirror root while leaving its origin intact (beta public API)")
+    .description("Remove one mirror root while leaving its origin intact")
     .option("--yes", "Confirm removal of the mirror root")
     .action(async (nodeIdOrPath: string, opts: { yes?: boolean }) => {
-      requireBetaApi();
       if (!opts.yes) {
         exitWithError(
           "confirmation_required",
@@ -123,11 +121,11 @@ function buildMeta(command: string, api: WorkflowyAPI) {
   };
 }
 
-function requireBetaApi(): void {
+function requireBetaMirrorMetadataApi(): void {
   if (getApiEnvironment() === "beta") return;
   exitWithError(
     "beta_api_required",
-    "WorkFlowy mirror API support is currently available on the beta public API.",
+    "WorkFlowy mirror identity inspection currently requires the beta public API.",
     "Use `wf --beta ...`, `wf --api-environment beta ...`, or persist it with `wf config:set api.environment beta`.",
   );
 }
@@ -165,15 +163,18 @@ function resolveNodeArg(input: string): string {
   exitWithError("node_not_found", `Node "${input}" not found.`, "Use a node ID or run `wf cache:sync` for path resolution.");
 }
 
-function describeMirrorRelationship(node: WFNode): {
+export function describeMirrorRelationship(node: WFNode): {
   role: "mirror" | "origin" | "regular";
   origin_id: string | null;
   mirror_ids: string[];
 } {
-  const originId = node.data?.mirror?.origin_id ?? null;
-  const mirrorIds = node.data?.mirror?.mirror_ids ?? [];
+  const mirror = node.data?.mirror;
+  const hasOriginId = !!mirror && Object.prototype.hasOwnProperty.call(mirror, "origin_id");
+  const hasMirrorIds = !!mirror && Object.prototype.hasOwnProperty.call(mirror, "mirror_ids");
+  const originId = typeof mirror?.origin_id === "string" ? mirror.origin_id : null;
+  const mirrorIds = Array.isArray(mirror?.mirror_ids) ? mirror.mirror_ids : [];
   return {
-    role: originId !== null ? "mirror" : mirrorIds.length > 0 ? "origin" : "regular",
+    role: hasOriginId ? "mirror" : hasMirrorIds ? "origin" : "regular",
     origin_id: originId,
     mirror_ids: mirrorIds,
   };

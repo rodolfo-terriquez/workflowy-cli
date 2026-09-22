@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.3.6 - 2026-09-21
+
+- Preserve mirror/origin relationship metadata from public API exports and compact document reads in the SQLite cache and JSON read, find, and search output.
+- Classify `origin_id: null` as a mirror with an inaccessible origin and retain explicit empty `mirror_ids` as origin metadata.
+- Use the documented production public API for mirror creation and removal while keeping richer relationship inspection on beta.
+- Migrate existing account caches in place with nullable mirror metadata columns.
+
 ## 3.3.5 - 2026-09-09
 
 - Fix `doc:edit` / MCP `edit_doc` updates, moves, and deletes for references nested anywhere under the requested root by planning calls against each node's live parent; reject out-of-root references instead of reporting false success.

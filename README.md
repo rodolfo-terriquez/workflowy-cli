@@ -54,7 +54,7 @@ This project is WorkFlowy-native:
 
 ## Status
 
-Current version: `3.3.5`
+Current version: `3.3.6`
 
 Implemented today:
 
@@ -73,7 +73,7 @@ To install a specific version or custom location:
 
 ```bash
 curl -fsSL https://github.com/rodolfo-terriquez/workflowy-cli/releases/latest/download/install.sh | \
-  WF_VERSION=v3.3.5 WF_INSTALL_DIR="$HOME/.local/bin" bash
+  WF_VERSION=v3.3.6 WF_INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
 ### Build from source
@@ -393,17 +393,17 @@ wf config:set api.environment production
 
 Automations can set `WORKFLOWY_API_ENVIRONMENT=production` or `WORKFLOWY_API_ENVIRONMENT=beta`. `wf doctor` reports the active environment and exact public API base URL. Production and beta caches are stored separately, so testing beta mirror responses does not overwrite the production cache.
 
-Mirror support is currently beta and may change. A mirror is a synchronized view of one canonical origin, not a separate copy: editing its shared content updates the origin and every other mirror.
+Mirror creation and removal are available on the production public API. The beta API additionally exposes richer identity metadata, including list-level origin references and complete origin mirror lists. A mirror is a synchronized view of one canonical origin, not a separate copy: editing its shared content updates the origin and every other mirror.
 
 ```bash
 # inspect data.mirror.origin_id or data.mirror.mirror_ids
 wf --beta --agent mirror:info <node-id>
 
 # create a mirror under a real destination node or a cached @target/path
-wf --beta mirror:create <origin-or-mirror-id> <destination> --position top
+wf mirror:create <origin-or-mirror-id> <destination> --position top
 
 # remove only this mirror root; its origin remains intact
-wf --beta mirror:remove <mirror-id> --yes
+wf mirror:remove <mirror-id> --yes
 ```
 
 Mirror responses combine location and shared content. `id`, `parent_id`, `priority`, and `createdAt` describe the mirror location; `name`, `note`, layout, completion, and modification fields come from the origin. Creating a mirror from an existing mirror resolves to the same true origin. The mirror endpoint requires a real destination node ID, so sync first when using an `@target` or cached path.
@@ -559,14 +559,14 @@ MCP client config example:
 
 Run `wf login` and `wf cache:sync` first. The MCP server uses the same local config and cache as the CLI.
 
-To expose beta mirror tools, set the environment before starting the server:
+To expose richer beta mirror identity inspection, set the environment before starting the server:
 
 ```bash
 wf config:set api.environment beta
 wf mcp
 ```
 
-The MCP bootstrap explains mirror identity and exposes `workflowy_mirror_info`, `workflowy_mirror_create`, and confirmation-gated `workflowy_mirror_remove` tools. Agents are instructed not to duplicate mirrored content or treat mirrors as separate notes.
+The MCP bootstrap explains mirror identity and exposes `workflowy_mirror_info`, `workflowy_mirror_create`, and confirmation-gated `workflowy_mirror_remove` tools. Create/remove work with the production API; richer `workflowy_mirror_info` data requires beta. Agents are instructed not to duplicate mirrored content or treat mirrors as separate notes.
 
 Start an account-pinned server with `wf --account work mcp`, or pass the optional `account` field on any MCP tool call to select a configured account per operation. This allows one agent session to read from one account and write to another while each account keeps its own cache.
 
@@ -612,7 +612,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:read",
-    "wf_version": "3.3.5"
+    "wf_version": "3.3.6"
   },
   "node": {},
   "children": []
@@ -625,7 +625,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "search",
-    "wf_version": "3.3.5"
+    "wf_version": "3.3.6"
   },
   "nodes": []
 }
@@ -637,7 +637,7 @@ Typical response shapes:
 {
   "meta": {
     "command": "node:add",
-    "wf_version": "3.3.5"
+    "wf_version": "3.3.6"
   },
   "message": "..."
 }

@@ -14,6 +14,7 @@ import {
   isCacheStale,
   isTargetDirty,
   clearTargetDirty,
+  getCachedMirrorRelationship,
   type CachedNode,
 } from "../shared/cache.ts";
 import { resolvePathOrId, isDirectId, resolveCacheTargetReference, resolveTargetReference } from "../shared/path.ts";
@@ -105,7 +106,10 @@ async function readLive(
 
     const output: Record<string, unknown> = {
       meta,
-      node: { id: node.id, name: node.name, note: node.note, type: node.type, completed: node.completed, hasMore: false, children: [] },
+      node: {
+        id: node.id, name: node.name, note: node.note, type: node.type, completed: node.completed,
+        ...(node.mirror ? { mirror: node.mirror } : {}), hasMore: false, children: [],
+      },
       children: node.children,
     };
 
@@ -243,7 +247,10 @@ function readFromCache(
 
     const output: Record<string, unknown> = {
       meta,
-      node: { id: flatNode.id, name: flatNode.name, note: flatNode.note, type: flatNode.type, completed: flatNode.completed, hasMore: false, children: [] },
+      node: {
+        id: flatNode.id, name: flatNode.name, note: flatNode.note, type: flatNode.type, completed: flatNode.completed,
+        ...(flatNode.mirror ? { mirror: flatNode.mirror } : {}), hasMore: false, children: [],
+      },
       children: flatNode.children,
     };
 
@@ -275,6 +282,7 @@ function cachedNodeToFlat(node: CachedNode, maxDepth: number, currentDepth = 0):
     : [];
 
   const hasMore = currentDepth >= maxDepth && getChildren(node.id).length > 0;
+  const mirror = getCachedMirrorRelationship(node);
 
   return {
     id: node.id,
@@ -282,6 +290,7 @@ function cachedNodeToFlat(node: CachedNode, maxDepth: number, currentDepth = 0):
     note: node.note ? cleanHtml(node.note) : null,
     type: layoutModeToType(node.line_type),
     completed: node.completed === 1,
+    ...(mirror ? { mirror } : {}),
     hasMore,
     children,
   };

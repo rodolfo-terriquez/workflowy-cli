@@ -69,13 +69,13 @@ Before making tool calls, follow this checklist:
 - Most reads are cache-first. Some tools support live API reads or searches when needed.
 - Node names and paths may be ambiguous. Do not guess when multiple matches exist.
 
-## Mirrors (beta public API)
+## Mirrors
 
 - A mirror is a synchronized view of one canonical origin, not an independent copy. Editing content through a mirror updates the origin and every other mirror.
 - On mirror nodes, \`data.mirror.origin_id\` identifies the canonical origin. On origin nodes, \`data.mirror.mirror_ids\` lists mirror-root locations.
 - Mirror responses mix location and shared content: \`id\`, \`parent_id\`, \`priority\`, and \`createdAt\` describe the mirror location; text, note, layout, completion, and modification fields come from the origin.
 - Do not duplicate mirrored content or treat a mirror and its origin as separate notes. Inspect relationship data with \`workflowy_mirror_info\` when identity matters.
-- Creating, inspecting, or removing mirrors requires the beta public API. Configure \`api.environment\` as \`beta\` before starting this server. \`workflowy_mirror_remove\` removes only the mirror root and preserves its origin.
+- Creating and removing mirrors use the production public API. Rich identity inspection, including origin mirror lists, requires the beta public API; select beta before using workflowy_mirror_info. workflowy_mirror_remove removes only the mirror root and preserves its origin.
 
 ## Common Workflows
 
@@ -563,7 +563,7 @@ const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "workflowy_mirror_create",
-    description: "Create a synchronized mirror of a node under another real node. This creates a view of the same origin, not a copy. Requires the beta public API.",
+    description: "Create a synchronized mirror of a node under another real node using the documented public API. This creates a view of the same origin, not a copy.",
     inputSchema: {
       type: "object",
       properties: {
@@ -576,7 +576,7 @@ const MCP_TOOLS: McpTool[] = [
   },
   {
     name: "workflowy_mirror_remove",
-    description: "Remove one mirror root while preserving the canonical origin. Destructive to that mirror location only; requires confirm=true and the beta public API.",
+    description: "Remove one mirror root through the documented public API while preserving the canonical origin. Destructive to that mirror location only; requires confirm=true.",
     inputSchema: {
       type: "object",
       properties: {

@@ -2,7 +2,7 @@ import { APP_VERSION } from "../shared/version.ts";
 import type { Command } from "commander";
 import chalk from "chalk";
 import { findByNameOrPath } from "../shared/path.ts";
-import { buildBreadcrumbDisplay, getCacheNodeCount, getCacheAgeSeconds, isCacheStale } from "../shared/cache.ts";
+import { buildBreadcrumbDisplay, getCacheNodeCount, getCacheAgeSeconds, getCachedMirrorRelationship, isCacheStale } from "../shared/cache.ts";
 import { cleanHtml } from "../shared/nodes.ts";
 import { formatJson } from "../output/json.ts";
 import { formatTsv, formatCsv, type TsvRow } from "../shared/output-formats.ts";
@@ -62,16 +62,20 @@ export function registerNodeFind(program: Command): void {
             cache_stale: isCacheStale(),
             wf_version: APP_VERSION,
           },
-          nodes: matches.map((m) => ({
-            id: m.id,
-            name: cleanHtml(m.name),
-            note: m.note ? cleanHtml(m.note) : null,
-            type: (m.line_type as "bullet" | "todo") ?? "bullet",
-            completed: m.completed === 1,
-            parent_path: m.parent_id ? buildBreadcrumbDisplay(m.parent_id) : "(root)",
-            hasMore: false,
-            children: [],
-          })),
+          nodes: matches.map((m) => {
+            const mirror = getCachedMirrorRelationship(m);
+            return {
+              id: m.id,
+              name: cleanHtml(m.name),
+              note: m.note ? cleanHtml(m.note) : null,
+              type: (m.line_type as "bullet" | "todo") ?? "bullet",
+              completed: m.completed === 1,
+              parent_path: m.parent_id ? buildBreadcrumbDisplay(m.parent_id) : "(root)",
+              ...(mirror ? { mirror } : {}),
+              hasMore: false,
+              children: [],
+            };
+          }),
         }));
         await handleCopyFlag(!!opts.copy);
         return;

@@ -534,7 +534,41 @@ test("--account rejects unknown account names before command execution", async (
   expect(JSON.parse(result.stdout).error.code).toBe("account_not_found");
 });
 
-test("mirror commands require an explicit beta API selection", async () => {
+test("cached JSON reads, finds, and searches preserve mirror metadata", async () => {
+  configModule.saveConfig({
+    activeAccount: "default",
+    accounts: { default: { name: "default", token: "token-default" } },
+  });
+  cacheModule.replaceAllNodes([
+    { id: "root-1", name: "Mirror test root", parent_id: null },
+    {
+      id: "mirror-1",
+      name: "Mirrored planning item",
+      parent_id: "root-1",
+      data: { mirror: { origin_id: null } },
+    },
+  ]);
+
+  const readResult = await runCli(["node:read", "mirror-1", "--format", "json"]);
+  expect(readResult.exitCode).toBe(0);
+  expect(JSON.parse(readResult.stdout).node.mirror).toEqual({
+    role: "mirror", origin_id: null, mirror_ids: [],
+  });
+
+  const findResult = await runCli(["node:find", "Mirrored planning item", "--format", "json"]);
+  expect(findResult.exitCode).toBe(0);
+  expect(JSON.parse(findResult.stdout).nodes[0].mirror).toEqual({
+    role: "mirror", origin_id: null, mirror_ids: [],
+  });
+
+  const searchResult = await runCli(["search", "Mirrored planning", "--format", "json"]);
+  expect(searchResult.exitCode).toBe(0);
+  expect(JSON.parse(searchResult.stdout).nodes[0].mirror).toEqual({
+    role: "mirror", origin_id: null, mirror_ids: [],
+  });
+});
+
+test("mirror identity inspection requires an explicit beta API selection", async () => {
   const productionResult = await runCli(["--agent", "mirror:info", "abcdef123456"]);
   expect(productionResult.exitCode).toBe(1);
   expect(JSON.parse(productionResult.stdout).error.code).toBe("beta_api_required");

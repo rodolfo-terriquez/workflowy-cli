@@ -113,7 +113,31 @@ test("beta public API routes mirror reads, creation, and removal to beta.workflo
   }
 });
 
-test("public API routes ordinary CRUD through the configured v1 environment", async () => {
+test("beta list responses preserve top-level mirror identity metadata", async () => {
+  saveConfig({
+    activeAccount: "default",
+    accounts: { default: { name: "default", token: "test-token" } },
+    api: {
+      environment: "beta",
+      rateLimit: { requestsPerMinute: 60_000, exportMinIntervalSeconds: 0, maxRetries: 1 },
+    },
+  });
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => Response.json({
+    nodes: [],
+    mirror: { origin_id: "origin-1" },
+  })) as unknown as typeof fetch;
+
+  try {
+    const response = await new WorkflowyAPI("test-token").listNodesWithMetadata("mirror-1");
+    expect(response).toEqual({ nodes: [], mirror: { origin_id: "origin-1" } });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("public API routes ordinary CRUD and mirror writes through the configured v1 environment", async () => {
   saveConfig({
     activeAccount: "default",
     accounts: { default: { name: "default", token: "test-token" } },
@@ -133,6 +157,9 @@ test("public API routes ordinary CRUD through the configured v1 environment", as
     if (method === "POST" && url.endsWith("/api/v1/nodes")) {
       return Response.json({ item_id: "created-1" });
     }
+    if (method === "POST" && url.endsWith("/mirror")) {
+      return Response.json({ item_id: "mirror-1", origin_id: "origin-1" });
+    }
     return Response.json({ status: "ok" });
   }) as typeof fetch;
 
@@ -147,8 +174,11 @@ test("public API routes ordinary CRUD through the configured v1 environment", as
     await api.completeNode("created-1");
     await api.uncompleteNode("created-1");
     await api.deleteNode("created-1");
+    const mirror = await api.createMirror("origin-1", "parent-1", "bottom");
+    await api.deleteMirror("mirror-1");
 
     expect(created).toEqual({ item_id: "created-1" });
+    expect(mirror).toEqual({ item_id: "mirror-1", origin_id: "origin-1" });
     expect(requests.map((request) => [request.method, request.url])).toEqual([
       ["POST", "https://workflowy.com/api/v1/nodes"],
       ["POST", "https://workflowy.com/api/v1/nodes/created-1"],
@@ -156,6 +186,8 @@ test("public API routes ordinary CRUD through the configured v1 environment", as
       ["POST", "https://workflowy.com/api/v1/nodes/created-1/complete"],
       ["POST", "https://workflowy.com/api/v1/nodes/created-1/uncomplete"],
       ["DELETE", "https://workflowy.com/api/v1/nodes/created-1"],
+      ["POST", "https://workflowy.com/api/v1/nodes/origin-1/mirror"],
+      ["DELETE", "https://workflowy.com/api/v1/nodes/mirror-1/mirror"],
     ]);
     expect(JSON.parse(requests[0]!.body!)).toEqual({
       parent_id: "today",
@@ -165,6 +197,7 @@ test("public API routes ordinary CRUD through the configured v1 environment", as
     });
     expect(JSON.parse(requests[1]!.body!)).toEqual({ name: "Updated log", layoutMode: "h2" });
     expect(JSON.parse(requests[2]!.body!)).toEqual({ parent_id: "tomorrow", position: "top" });
+    expect(JSON.parse(requests[6]!.body!)).toEqual({ parent_id: "parent-1", position: "bottom" });
   } finally {
     globalThis.fetch = originalFetch;
   }
